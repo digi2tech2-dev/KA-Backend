@@ -167,6 +167,25 @@ const rejectTargetOrderSchema = Joi.object({
     'any.custom': 'Rejection reason is required',
 });
 
+const updateTargetOrderStatusSchema = Joi.object({
+    status: Joi.string().trim().uppercase().valid('PENDING', 'APPROVED', 'APPROVE', 'DONE', 'REJECTED', 'REJECT').required().messages({
+        'any.required': 'status is required',
+        'any.only': 'status must be PENDING, APPROVED, or REJECTED',
+    }),
+    adminNotes: rejectionText.optional(),
+    rejectionReason: rejectionText.optional(),
+    reason: rejectionText.optional(),
+}).custom((value, helpers) => {
+    if (['REJECTED', 'REJECT'].includes(value.status)) {
+        const adminNotes = value.adminNotes ?? value.rejectionReason ?? value.reason;
+        if (!adminNotes) return helpers.error('any.custom');
+        return { ...value, adminNotes };
+    }
+    return value;
+}, 'target status rejection reason normalizer').messages({
+    'any.custom': 'Rejection reason is required',
+});
+
 module.exports = {
     validateBody,
     validateQuery,
@@ -177,5 +196,6 @@ module.exports = {
         listMyTargetOrders: listMyTargetOrdersQuery,
         listTargetOrders: listTargetOrdersQuery,
         rejectTargetOrder: rejectTargetOrderSchema,
+        updateTargetOrderStatus: updateTargetOrderStatusSchema,
     },
 };

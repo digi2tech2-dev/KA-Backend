@@ -228,6 +228,11 @@ const safeNotify = (label, notifyFn, ...args) => {
     }
 };
 
+const populateTargetOrder = (orderId) => TargetOrder.findById(orderId)
+    .populate('userId', 'name email currency walletBalance')
+    .populate('appId', 'name image targetAccountId unitPrice allowedPaymentMethods isActive')
+    .populate('reviewedBy', 'name email');
+
 // =============================================================================
 // TARGET APPS
 // =============================================================================
@@ -497,10 +502,7 @@ const approveTargetOrder = async (orderId, adminId, auditContext = null) => {
         userAgent: auditContext?.userAgent ?? null,
     });
 
-    const populated = await TargetOrder.findById(updated._id)
-        .populate('userId', 'name email currency walletBalance')
-        .populate('appId', 'name image targetAccountId unitPrice allowedPaymentMethods isActive')
-        .populate('reviewedBy', 'name email');
+    const populated = await populateTargetOrder(updated._id);
 
     safeNotify('Target approval notification', notifyTargetApproved, populated);
 
@@ -563,14 +565,40 @@ const rejectTargetOrder = async (orderId, adminId, adminNotes = null, auditConte
         userAgent: auditContext?.userAgent ?? null,
     });
 
-    const populated = await TargetOrder.findById(updated._id)
-        .populate('userId', 'name email currency walletBalance')
-        .populate('appId', 'name image targetAccountId unitPrice allowedPaymentMethods isActive')
-        .populate('reviewedBy', 'name email');
+    const populated = await populateTargetOrder(updated._id);
 
     safeNotify('Target rejection notification', notifyTargetRejected, populated, adminNotes);
 
     return populated;
+};
+
+const updateTargetOrderStatus = async (orderId, status, adminId, adminNotes = null, auditContext = null) => {
+    const normalizedStatus = String(status || '').trim().toUpperCase();
+
+    if (['APPROVED', 'APPROVE', 'DONE'].includes(normalizedStatus)) {
+        return approveTargetOrder(orderId, adminId, auditContext);
+    }
+
+    if (['REJECTED', 'REJECT'].includes(normalizedStatus)) {
+        return rejectTargetOrder(orderId, adminId, adminNotes, auditContext);
+    }
+
+    if (normalizedStatus === TARGET_ORDER_STATUS.PENDING) {
+        const existing = await TargetOrder.findById(orderId);
+        if (!existing) throw new NotFoundError('TargetOrder');
+        if (existing.status !== TARGET_ORDER_STATUS.PENDING) {
+            throw new BusinessRuleError(
+                'Reviewed target orders cannot be moved back to pending.',
+                'TARGET_ORDER_PENDING_REVERT_UNSUPPORTED'
+            );
+        }
+        return populateTargetOrder(existing._id);
+    }
+
+    throw new BusinessRuleError(
+        'Unsupported target order status.',
+        'TARGET_ORDER_STATUS_UNSUPPORTED'
+    );
 };
 
 const listTargetOrders = async ({ page = 1, limit = 20, status, search } = {}) => {
@@ -656,6 +684,7 @@ module.exports = {
     createTargetOrder,
     approveTargetOrder,
     rejectTargetOrder,
+    updateTargetOrderStatus,
     listTargetOrders,
     listMyTargetOrders,
 };

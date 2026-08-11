@@ -36,6 +36,26 @@ const { AlkasrVipAdapter } = require('./alkasr.adapter');
 const { IbraAdapter } = require('./ibra.adapter');
 const { DealerApiAdapter } = require('./dealerApi.service');
 
+const assertProductionAdapterAllowed = (AdapterClass, provider, { strict = false } = {}) => {
+    const bySlug = (provider.slug ?? '').toLowerCase().trim();
+    const byName = (provider.name ?? '').toLowerCase().trim();
+
+    if (
+        process.env.NODE_ENV === 'production'
+        && (!AdapterClass || AdapterClass === MockProviderAdapter)
+    ) {
+        throw new Error(
+            `UNSUPPORTED_PROVIDER: Mock provider fallback is disabled in production for slug="${bySlug}" / name="${byName}".`
+        );
+    }
+
+    if (!AdapterClass && strict) {
+        throw new Error(
+            `UNSUPPORTED_PROVIDER: No adapter registered for slug="${bySlug}" / name="${byName}".`
+        );
+    }
+};
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 //
 // Keys must be lowercase.  Both slug and display-name variants are registered
@@ -146,9 +166,11 @@ const getAdapter = (provider, adapterOptions = {}) => {
 
     const AdapterClass = registry.get(bySlug)
         ?? registry.get(byName)
-        ?? MockProviderAdapter;
+        ?? null;
 
-    return new AdapterClass(provider, adapterOptions);
+    assertProductionAdapterAllowed(AdapterClass, provider);
+
+    return new (AdapterClass ?? MockProviderAdapter)(provider, adapterOptions);
 };
 
 /**
@@ -168,14 +190,8 @@ const getProviderAdapter = (provider, options = {}) => {
 
     const AdapterClass = registry.get(bySlug) ?? registry.get(byName);
 
-    if (!AdapterClass) {
-        if (options.strict) {
-            throw new Error(
-                `UNSUPPORTED_PROVIDER: No adapter registered for slug="${bySlug}" / name="${byName}".`
-            );
-        }
-        return new MockProviderAdapter(provider, options);
-    }
+    assertProductionAdapterAllowed(AdapterClass, provider, { strict: options.strict });
+    if (!AdapterClass) return new MockProviderAdapter(provider, options);
 
     return new AdapterClass(provider, options);
 };

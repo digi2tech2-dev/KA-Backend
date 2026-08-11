@@ -55,21 +55,21 @@ const config = {
         port: parseInt(process.env.SMTP_PORT || '587', 10),
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
-        from: process.env.EMAIL_FROM || 'noreply@platform.com',
+        from: process.env.EMAIL_FROM || 'noreply@ka.local',
         // Base URL for verification links (server-side)
         appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`,
     },
 
     // ── Frontend ────────────────────────────────────────────────────────────────
     frontend: {
-        url: process.env.FRONTEND_URL || 'http://localhost:3000',
+        url: process.env.FRONTEND_URL || 'http://localhost:5173',
         verifyRedirectUrl: process.env.FRONTEND_VERIFY_REDIRECT_URL ||
-            `${process.env.FRONTEND_URL || 'http://localhost:3000'}/email-verified`,
+            `${process.env.FRONTEND_URL || 'http://localhost:5173'}/email-verified`,
     },
 
     // ── CORS ────────────────────────────────────────────────────────────────────
     cors: {
-        allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:3000',
+        allowedOrigins: process.env.ALLOWED_ORIGINS || 'http://localhost:5173',
     },
 
     // ── Receipt Analyzer (anti-fraud checks for deposit receipts) ──────────────

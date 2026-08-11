@@ -123,6 +123,19 @@ const updateCreditLimitSchema = Joi.object({
     }),
 });
 
+const updateUserQuotaSchema = Joi.object({
+    quantityLimit: Joi.number().integer().min(0).required().messages({
+        'number.integer': 'quantityLimit must be a whole number',
+        'number.min': 'quantityLimit cannot be negative',
+        'any.required': 'quantityLimit is required',
+    }),
+    reason: Joi.string().trim().max(255).allow('', null),
+});
+
+const resetUserQuotaSchema = Joi.object({
+    reason: Joi.string().trim().max(255).allow('', null),
+});
+
 const updateReferralCommissionOverrideSchema = Joi.object({
     percent: Joi.number().min(0).max(50).allow(null).required().messages({
         'number.min': 'Referral commission percent cannot be negative',
@@ -484,6 +497,8 @@ module.exports = {
         updateUserRole: updateUserRoleSchema,
         updateUserCurrency: updateUserCurrencySchema,
         updateCreditLimit: updateCreditLimitSchema,
+        updateUserQuota: updateUserQuotaSchema,
+        resetUserQuota: resetUserQuotaSchema,
         updateReferralCommissionOverride: updateReferralCommissionOverrideSchema,
         listReferralAgentsQuery: listReferralAgentsQuerySchema,
         listSubAgentRequestsQuery: listSubAgentRequestsQuerySchema,

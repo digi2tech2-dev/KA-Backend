@@ -1,7 +1,7 @@
 {
-  "name": "coins-store-backend",
+  "name": "ka-backend",
   "version": "1.0.0",
-  "description": "Coins Store backend API with financial logic",
+  "description": "KA backend API with financial logic",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -11,7 +11,7 @@
     "test": "jest --runInBand --forceExit"
   },
   "keywords": [
-    "coins-store",
+    "ka",
     "digital-products",
     "ecommerce",
     "financial"

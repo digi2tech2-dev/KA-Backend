@@ -189,6 +189,9 @@ router.patch('/users/:id/restore', requirePermission('MANAGE_USERS'), usersCtrl.
 router.patch('/users/:id/role', adminOnly, validateBody(schemas.updateUserRole), usersCtrl.updateUserRole);
 router.patch('/users/:id/currency', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUserCurrency), usersCtrl.updateUserCurrency);
 router.patch('/users/:id/credit-limit', requirePermission('MANAGE_USERS'), validateBody(schemas.updateCreditLimit), usersCtrl.updateUserCreditLimit);
+router.get('/users/:id/quota', requirePermission('MANAGE_USERS'), usersCtrl.getUserQuota);
+router.patch('/users/:id/quota', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUserQuota), usersCtrl.updateUserQuota);
+router.post('/users/:id/quota/reset', requirePermission('MANAGE_USERS'), validateBody(schemas.resetUserQuota), usersCtrl.resetUserQuota);
 router.post('/users/:id/reset-password', requirePermission('MANAGE_USERS'), validateBody(schemas.resetUserPassword), usersCtrl.resetUserPassword);
 router.patch('/users/:id/avatar', requirePermission('MANAGE_USERS'), avatarUpload.single('avatar'), usersCtrl.updateUserAvatar);
 router.patch('/users/:id/permissions', adminOnly, validateBody(schemas.updateUserPermissions), usersCtrl.updateUserPermissions);
@@ -612,6 +615,38 @@ router.patch('/targets/:id/reject', requirePermission('CONFIRM_TARGET_REQUESTS')
 // ═══════════════════════════════════════════════════════════════════════════════
 // NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const updateTargetStatusCompat = catchAsync(async (req, res) => {
+    const auditContext = req.auditContext ?? {
+        actorId: req.user._id,
+        actorRole: String(req.user.role || '').toUpperCase(),
+        ipAddress: req.ip ?? null,
+        userAgent: req.get('User-Agent') ?? null,
+    };
+
+    const order = await targetSvc.updateTargetOrderStatus(
+        req.params.id,
+        req.body.status,
+        req.user._id,
+        req.body.adminNotes ?? req.body.rejectionReason ?? req.body.reason ?? null,
+        auditContext
+    );
+    sendSuccess(res, order, 'Target order status resolved.');
+});
+
+router.patch(
+    '/targets/:id/status',
+    requirePermission('CONFIRM_TARGET_REQUESTS'),
+    targetValidation.validateBody(targetValidation.schemas.updateTargetOrderStatus),
+    updateTargetStatusCompat
+);
+
+router.patch(
+    '/targets/:id',
+    requirePermission('CONFIRM_TARGET_REQUESTS'),
+    targetValidation.validateBody(targetValidation.schemas.updateTargetOrderStatus),
+    updateTargetStatusCompat
+);
 
 router.get('/notifications', adminOnly, notifValidation.validateQuery(notifValidation.schemas.listAllNotifications), catchAsync(async (req, res) => {
     const page = parseInt(req.query.page ?? 1, 10);

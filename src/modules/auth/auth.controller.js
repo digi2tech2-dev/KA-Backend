@@ -83,6 +83,14 @@ const resendVerification = catchAsync(async (req, res) => {
     sendSuccess(res, null, result.message);
 });
 
+const refresh = (_req, res) => {
+    return res.status(401).json({
+        success: false,
+        code: 'REFRESH_NOT_SUPPORTED',
+        message: 'Session refresh is not supported by this stateless JWT backend. Please log in again.',
+    });
+};
+
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 /**
@@ -167,6 +175,7 @@ const verify2FA = catchAsync(async (req, res) => {
 module.exports = {
     register,
     login,
+    refresh,
     verifyEmail,
     resendVerification,
     googleCallback,

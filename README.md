@@ -1,4 +1,4 @@
-# Coins Store Backend
+# KA Backend
 
 Production-oriented Node.js backend for a digital coins and digital-products store. The API manages customer accounts, wallets, deposits, product catalog publishing, provider-backed fulfillment, manual order review, target coin requests, notifications, reseller compatibility APIs, and admin operations.
 
@@ -588,7 +588,7 @@ Minimum local `.env`:
 ```env
 NODE_ENV=development
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/coins-store
+MONGO_URI=mongodb://localhost:27017/ka-platform
 JWT_SECRET=replace_with_a_long_random_secret
 JWT_EXPIRES_IN=7d
 BCRYPT_ROUNDS=12

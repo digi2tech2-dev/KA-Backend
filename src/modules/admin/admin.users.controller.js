@@ -108,6 +108,33 @@ const updateUserCreditLimit = catchAsync(async (req, res) => {
     sendSuccess(res, { user }, 'User credit limit updated');
 });
 
+// GET /admin/users/:id/quota
+const getUserQuota = catchAsync(async (req, res) => {
+    const result = await svc.getUserQuota(req.params.id);
+    sendSuccess(res, result, 'User quota retrieved');
+});
+
+// PATCH /admin/users/:id/quota
+const updateUserQuota = catchAsync(async (req, res) => {
+    const result = await svc.updateUserQuota(
+        req.params.id,
+        req.body.quantityLimit,
+        req.user._id,
+        req.body.reason || null
+    );
+    sendSuccess(res, result, 'User quota updated');
+});
+
+// POST /admin/users/:id/quota/reset
+const resetUserQuota = catchAsync(async (req, res) => {
+    const result = await svc.resetUserQuota(
+        req.params.id,
+        req.user._id,
+        req.body.reason || null
+    );
+    sendSuccess(res, result, 'User quota reset');
+});
+
 // PATCH /admin/users/:id/permissions
 const updateUserPermissions = catchAsync(async (req, res) => {
     const user = await svc.updateUserPermissions(req.params.id, req.body.permissions, req.user._id);
@@ -126,6 +153,9 @@ module.exports = {
     updateUserRole,
     updateUserCurrency,
     updateUserCreditLimit,
+    getUserQuota,
+    updateUserQuota,
+    resetUserQuota,
     resetUserPassword,
     updateUserAvatar,
     updateUserPermissions,

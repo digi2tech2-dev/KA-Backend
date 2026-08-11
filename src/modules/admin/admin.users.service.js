@@ -20,6 +20,7 @@ const {
     ENTITY_TYPES,
     ACTOR_ROLES,
 } = require('../audit/audit.constants');
+const { buildQuantityQuota } = require('../../shared/utils/quantityQuota');
 
 // ─── Private helper ────────────────────────────────────────────────────────────
 
@@ -441,6 +442,83 @@ const updateUserCreditLimit = async (id, creditLimit, adminId) => {
     return user;
 };
 
+const _findQuotaUserOrFail = async (id) => {
+    const user = await User.findById(id)
+        .select('-password -emailVerificationToken -emailVerificationExpires')
+        .populate('groupId', 'name percentage isActive billingMode');
+    if (!user) throw new NotFoundError('User');
+    return user;
+};
+
+const getUserQuota = async (id) => {
+    const user = await _findQuotaUserOrFail(id);
+    return {
+        user,
+        quota: buildQuantityQuota(user),
+    };
+};
+
+const updateUserQuota = async (id, quantityLimit, adminId, reason = null) => {
+    const user = await _findQuotaUserOrFail(id);
+    const previousQuota = buildQuantityQuota(user);
+    const nextQuantityLimit = Number(quantityLimit);
+
+    if (!Number.isFinite(nextQuantityLimit) || nextQuantityLimit < 0) {
+        throw new BusinessRuleError('Quantity limit cannot be negative.', 'INVALID_QUANTITY_LIMIT');
+    }
+
+    user.quantityLimit = Math.floor(nextQuantityLimit);
+    await user.save();
+    await user.populate('groupId', 'name percentage isActive billingMode');
+
+    createAuditLog({
+        actorId: adminId,
+        actorRole: ACTOR_ROLES.ADMIN,
+        action: ADMIN_ACTIONS.USER_UPDATED,
+        entityType: ENTITY_TYPES.USER,
+        entityId: user._id,
+        metadata: {
+            field: 'quantityLimit',
+            previousQuota,
+            newQuota: buildQuantityQuota(user),
+            reason: reason || null,
+        },
+    });
+
+    return {
+        user,
+        quota: buildQuantityQuota(user),
+    };
+};
+
+const resetUserQuota = async (id, adminId, reason = null) => {
+    const user = await _findQuotaUserOrFail(id);
+    const previousQuota = buildQuantityQuota(user);
+
+    user.quantityUsed = 0;
+    await user.save();
+    await user.populate('groupId', 'name percentage isActive billingMode');
+
+    createAuditLog({
+        actorId: adminId,
+        actorRole: ACTOR_ROLES.ADMIN,
+        action: ADMIN_ACTIONS.USER_UPDATED,
+        entityType: ENTITY_TYPES.USER,
+        entityId: user._id,
+        metadata: {
+            field: 'quantityUsed',
+            previousQuota,
+            newQuota: buildQuantityQuota(user),
+            reason: reason || null,
+        },
+    });
+
+    return {
+        user,
+        quota: buildQuantityQuota(user),
+    };
+};
+
 // ─── Update Permissions ───────────────────────────────────────────────────────
 
 /**
@@ -482,6 +560,9 @@ module.exports = {
     updateUserRole,
     updateUserCurrency,
     updateUserCreditLimit,
+    getUserQuota,
+    updateUserQuota,
+    resetUserQuota,
     resetUserPassword,
     updateUserAvatar,
     updateUserPermissions,

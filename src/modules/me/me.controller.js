@@ -17,6 +17,7 @@ const { sendSuccess, sendCreated, sendPaginated } = require('../../shared/utils/
 const catchAsync = require('../../shared/utils/catchAsync');
 const { AuthorizationError, BusinessRuleError, NotFoundError } = require('../../shared/errors/AppError');
 const { buildPublicWalletSummary } = require('../../shared/utils/walletSummary');
+const { buildQuantityQuota } = require('../../shared/utils/quantityQuota');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,20 @@ const getProfile = catchAsync(async (req, res) => {
         webhookUrl: user.webhookUrl || '',
         createdAt: user.createdAt,
     }, 'Profile retrieved.');
+});
+
+const getQuota = catchAsync(async (req, res) => {
+    const user = await User.findById(req.user._id)
+        .select('quantityLimit quantityUsed groupId')
+        .populate('groupId', 'name percentage isActive billingMode');
+
+    if (!user) throw new NotFoundError('User');
+
+    const quota = buildQuantityQuota(user);
+    sendSuccess(res, {
+        quota,
+        ...quota,
+    }, 'Quota retrieved.');
 });
 
 const generateApiToken = catchAsync(async (req, res) => {
@@ -518,6 +533,7 @@ const getDeposit = catchAsync(async (req, res) => {
 
 module.exports = {
     getProfile,
+    getQuota,
     generateApiToken,
     updateApiSettings,
     getWallet,

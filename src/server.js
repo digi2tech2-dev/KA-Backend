@@ -9,6 +9,8 @@ const fulfillmentJob = require('./modules/orders/fulfillmentJob');
 const syncProvidersJob = require('./modules/providers/syncProvidersJob');
 const whatsappService = require('./modules/whatsapp/whatsapp.service');
 
+const isExplicitlyDisabled = (value) => String(value || '').trim().toLowerCase() === 'false';
+
 
 const startServer = async () => {
     try {
@@ -19,20 +21,33 @@ const startServer = async () => {
         const server = app.listen(config.port, () => {
             console.log('');
             console.log('═══════════════════════════════════════════════════════');
-            console.log(`  🚀  Coins Store`);
+            console.log(`  🚀  KA API`);
             console.log(`  🌍  Environment : ${config.env}`);
             console.log(`  📡  Port        : ${config.port}`);
-            console.log(`  🔗  Base URL    : http://localhost:${config.port}/api`);
+            console.log(`  🔗  Base URL    : ${process.env.APP_URL || `http://localhost:${config.port}`}/api`);
             console.log('═══════════════════════════════════════════════════════');
             console.log('');
         });
 
         // 3. Start background cron jobs (skipped in test env)
-        fulfillmentJob.start();    // every minute  — polls PROCESSING order statuses
-        syncProvidersJob.start();  // every 6 hours — syncs provider product catalogues
-        whatsappService.initializeWhatsAppClient().catch((err) => {
-            console.error('[WhatsApp] startup initialization failed:', err.message);
-        });
+        if (!isExplicitlyDisabled(process.env.BACKGROUND_JOBS_ENABLED)) {
+            fulfillmentJob.start();
+            syncProvidersJob.start();
+        } else {
+            console.log('[Startup] Background jobs are disabled by BACKGROUND_JOBS_ENABLED=false.');
+        }
+
+        if (!isExplicitlyDisabled(process.env.WHATSAPP_AUTO_INIT)) {
+            whatsappService.initializeWhatsAppClient().catch((err) => {
+                console.error('[WhatsApp] startup initialization failed:', err.message);
+            });
+        } else {
+            console.log('[Startup] WhatsApp auto-init is disabled by WHATSAPP_AUTO_INIT=false.');
+        }
+
+        if (typeof process.send === 'function') {
+            process.send('ready');
+        }
 
         // ── Graceful Shutdown ─────────────────────────────────────────────────────
         const gracefulShutdown = (signal) => {

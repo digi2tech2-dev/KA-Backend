@@ -14,12 +14,36 @@ const { NotFoundError, BusinessRuleError } = require('../../shared/errors/AppErr
 const { createAuditLog } = require('../audit/audit.service');
 const { ADMIN_ACTIONS, ENTITY_TYPES, ACTOR_ROLES } = require('../audit/audit.constants');
 
+const redactProvider = (provider) => {
+    const obj = provider?.toObject ? provider.toObject() : { ...(provider || {}) };
+    const hasApiToken = Boolean(obj.apiToken || obj.apiKey);
+    delete obj.apiToken;
+    delete obj.apiKey;
+    return { ...obj, hasApiToken };
+};
+
+const redactProviderForAudit = (provider) => {
+    const obj = redactProvider(provider);
+    if (obj.hasApiToken) obj.apiToken = '[REDACTED]';
+    return obj;
+};
+
+const isRedactedTokenPlaceholder = (value) => {
+    const token = String(value || '').trim();
+    if (!token) return true;
+    if (token === '[REDACTED]') return true;
+    if (/^\*+$/.test(token)) return true;
+    if (/^•+$/.test(token)) return true;
+    return false;
+};
+
 // ─── List ──────────────────────────────────────────────────────────────────────
 
 const listProviders = async ({ includeInactive = true } = {}) => {
     const filter = { deletedAt: null };
     if (!includeInactive) filter.isActive = true;
-    return Provider.find(filter).sort({ name: 1 });
+    const providers = await Provider.find(filter).sort({ name: 1 });
+    return providers.map(redactProvider);
 };
 
 // ─── Get one ──────────────────────────────────────────────────────────────────
@@ -27,7 +51,7 @@ const listProviders = async ({ includeInactive = true } = {}) => {
 const getProviderById = async (id) => {
     const provider = await Provider.findById(id);
     if (!provider) throw new NotFoundError('Provider');
-    return provider;
+    return redactProvider(provider);
 };
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -44,7 +68,7 @@ const createProvider = async (data, adminId) => {
         metadata: { name: provider.name, slug: provider.slug, baseUrl: provider.baseUrl },
     });
 
-    return provider;
+    return redactProvider(provider);
 };
 
 // ─── Update ───────────────────────────────────────────────────────────────────
@@ -53,13 +77,13 @@ const updateProvider = async (id, data, adminId) => {
     const provider = await Provider.findById(id);
     if (!provider) throw new NotFoundError('Provider');
 
-    const before = provider.toObject();
+    const before = redactProviderForAudit(provider);
     const { name, slug, baseUrl, apiToken, isActive, syncInterval, supportedFeatures } = data;
 
     if (name !== undefined) provider.name = name;
     if (slug !== undefined) provider.slug = slug;
     if (baseUrl !== undefined) provider.baseUrl = baseUrl;
-    if (apiToken !== undefined) provider.apiToken = apiToken;
+    if (apiToken !== undefined && !isRedactedTokenPlaceholder(apiToken)) provider.apiToken = apiToken;
     if (isActive !== undefined) provider.isActive = isActive;
     if (syncInterval !== undefined) provider.syncInterval = syncInterval;
     if (supportedFeatures !== undefined) provider.supportedFeatures = supportedFeatures;
@@ -72,10 +96,10 @@ const updateProvider = async (id, data, adminId) => {
         action: ADMIN_ACTIONS.PROVIDER_UPDATED,
         entityType: ENTITY_TYPES.PROVIDER,
         entityId: provider._id,
-        metadata: { before, after: provider.toObject() },
+        metadata: { before, after: redactProviderForAudit(provider) },
     });
 
-    return provider;
+    return redactProvider(provider);
 };
 
 // ─── Safe Delete ──────────────────────────────────────────────────────────────
@@ -92,7 +116,7 @@ const deleteProvider = async (id, adminId) => {
         metadata: { name: provider.name, detachedProducts },
     });
 
-    return { ...provider.toObject(), detachedProducts };
+    return { ...redactProvider(provider), detachedProducts };
 };
 
 // ─── Toggle Active ────────────────────────────────────────────────────────────
@@ -113,7 +137,7 @@ const toggleProvider = async (id, adminId) => {
         metadata: { name: provider.name, isActive: provider.isActive },
     });
 
-    return provider;
+    return redactProvider(provider);
 };
 
 // ─── Get Provider Balance ─────────────────────────────────────────────────────

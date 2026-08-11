@@ -9,6 +9,7 @@ const OAuthStateNonce = require('./oauthStateNonce.model');
 
 const OAUTH_STATE_PURPOSE = 'google-oauth';
 const OAUTH_STATE_TTL = '10m';
+const OAUTH_STATE_ISSUER = 'ka-api';
 
 const normalizeIntent = (value) => (
     String(value || '').trim().toLowerCase() === 'signup' ? 'signup' : 'login'
@@ -26,7 +27,7 @@ const createGoogleOAuthState = ({ referralCode, intent } = {}, options = {}) => 
 
     return jwt.sign(payload, config.jwt.secret, {
         expiresIn: options.expiresIn || OAUTH_STATE_TTL,
-        issuer: 'kanz-coins-api',
+        issuer: OAUTH_STATE_ISSUER,
         audience: 'google-oauth',
     });
 };
@@ -39,7 +40,7 @@ const consumeGoogleOAuthState = async (state) => {
     let decoded;
     try {
         decoded = jwt.verify(state, config.jwt.secret, {
-            issuer: 'kanz-coins-api',
+            issuer: OAUTH_STATE_ISSUER,
             audience: 'google-oauth',
         });
     } catch (err) {

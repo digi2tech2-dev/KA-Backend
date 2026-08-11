@@ -59,6 +59,7 @@ router.use(authenticate, requireActiveUser);
  * @access Active user
  */
 router.get('/', me.getProfile);
+router.get('/quota', me.getQuota);
 
 router.post('/api-token/generate', me.generateApiToken);
 
