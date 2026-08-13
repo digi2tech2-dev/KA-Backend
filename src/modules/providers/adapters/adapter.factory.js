@@ -120,6 +120,21 @@ const registry = new Map([
     ['3amo card', AlkasrVipAdapter], // name
     ['3amocard', AlkasrVipAdapter],  // compact
 
+    // ── dolr card (Uses Alkasr Adapter) ─────────────────────────────────────
+    ['dolr-card', AlkasrVipAdapter], // slug
+    ['dolr card', AlkasrVipAdapter], // name
+    ['dolrcard', AlkasrVipAdapter],  // compact
+
+    // ── x3 store (Uses Alkasr Adapter) ─────────────────────────────────────
+    ['x3-store', AlkasrVipAdapter], // slug
+    ['x3 store', AlkasrVipAdapter], // name
+    ['x3store', AlkasrVipAdapter],  // compact
+
+
+    // ── helmy card (Uses Alkasr Adapter) ─────────────────────────────────────
+    ['helmy-card', AlkasrVipAdapter], // slug
+    ['helmy card', AlkasrVipAdapter], // name
+    ['helmycard', AlkasrVipAdapter],  // compact
 
     // -- Ibra Store ------------------------------------------------------------
     ['ibra-store', IbraAdapter],
