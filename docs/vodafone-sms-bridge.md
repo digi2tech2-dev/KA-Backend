@@ -72,11 +72,12 @@ Matching requires all of:
 - exact payment transaction reference and exact decimal amount;
 - compatible sender phone when the deposit contains one.
 
-KA did not previously store a dedicated deposit transaction reference, so the
-backend accepts the optional `paymentTransactionId` field without changing the
-frontend. Existing deposits can also match only an explicitly labelled
-transaction reference in `notes`; arbitrary notes are never searched as a
-reference. Without one of those references, an SMS remains `UNMATCHED`.
+New Electronic Wallet deposits store the customer-entered `transactionId` as a
+trimmed string, preserving leading zeroes, and the matcher compares that exact
+field. Existing deposits can also match a legacy `paymentTransactionId` or an
+explicitly labelled transaction reference in `notes`; arbitrary notes are never
+searched as a reference. Without one of those references, an SMS remains
+`UNMATCHED`.
 
 `MATCHED` only links the event and deposit while `VODAFONE_SMS_AUTO_APPROVE=false`.
 It does not change a deposit status, wallet balance, wallet ledger, or referral

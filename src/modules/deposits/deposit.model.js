@@ -95,13 +95,15 @@ const depositRequestSchema = new mongoose.Schema(
         },
 
         /**
-         * Relative path to the uploaded receipt image/PDF.
+         * Relative path to the uploaded receipt image/PDF when required by
+         * the selected payment method. Electronic Wallet deposits use
+         * transactionId instead.
          * Stored by multer via createUpload('deposits').
          * e.g. 'uploads/deposits/1679580000000-abcdef01.jpg'
          */
         receiptImage: {
             type: String,
-            required: [true, 'receiptImage is required'],
+            default: null,
             trim: true,
             maxlength: [2048, 'receiptImage path cannot exceed 2048 characters'],
         },
@@ -142,7 +144,19 @@ const depositRequestSchema = new mongoose.Schema(
             },
         },
 
-        /** Optional immutable payment reference supplied by the customer. */
+        /**
+         * Immutable customer-supplied payment transaction ID.
+         * Kept as a string so provider IDs such as 022494991382 retain leading zeroes.
+         */
+        transactionId: {
+            type: String,
+            trim: true,
+            maxlength: [64, 'transactionId cannot exceed 64 characters'],
+            default: null,
+        },
+
+        // Legacy field retained only so pre-existing deposits can still be
+        // reconciled. New deposits must use transactionId above.
         paymentTransactionId: {
             type: String,
             trim: true,
@@ -251,7 +265,7 @@ depositRequestSchema.index({ status: 1, createdAt: 1 });
  * Customer: list their own deposit history.
  */
 depositRequestSchema.index({ userId: 1, createdAt: -1 });
-depositRequestSchema.index({ status: 1, paymentMethodId: 1, paymentTransactionId: 1 });
+depositRequestSchema.index({ status: 1, paymentMethodId: 1, transactionId: 1 });
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────
 

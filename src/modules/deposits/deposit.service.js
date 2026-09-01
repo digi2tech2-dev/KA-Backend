@@ -98,7 +98,8 @@ const normalizeSenderDetails = (source = {}) => {
  * @param {string}          params.currency
  * @param {number}          params.exchangeRate
  * @param {number}          params.amountUsd
- * @param {string}          params.receiptImage
+ * @param {string|null}     [params.receiptImage]
+ * @param {string|null}     [params.transactionId]
  * @param {string|null}     [params.notes]
  * @param {Object|null}     [params.senderDetails]
  * @param {Object|null}     [params.auditContext]
@@ -108,12 +109,13 @@ const normalizeSenderDetails = (source = {}) => {
 const createDepositRequest = async ({
     userId,
     paymentMethodId,
-    paymentTransactionId = null,
+    transactionId = null,
     requestedAmount,
     currency,
     exchangeRate,
     amountUsd,
-    receiptImage,
+    receiptImage = null,
+    isElectronicWallet = false,
     notes = null,
     senderDetails = null,
     auditContext = null,
@@ -122,10 +124,24 @@ const createDepositRequest = async ({
     const user = await User.findById(userId).select('_id role name email');
     if (!user) throw new NotFoundError('User');
 
+    const normalizedTransactionId = transactionId ? String(transactionId).trim() : null;
+    if (isElectronicWallet && !normalizedTransactionId) {
+        throw new BusinessRuleError(
+            'transactionId is required for Electronic Wallet deposits.',
+            'TRANSACTION_ID_REQUIRED'
+        );
+    }
+    if (!isElectronicWallet && !receiptImage) {
+        throw new BusinessRuleError(
+            'Receipt image is required. Please upload a file.',
+            'RECEIPT_REQUIRED'
+        );
+    }
+
     const deposit = await DepositRequest.create({
         userId,
         paymentMethodId,
-        paymentTransactionId: paymentTransactionId ? String(paymentTransactionId).trim() : null,
+        transactionId: normalizedTransactionId,
         requestedAmount: Number(parseFloat(requestedAmount).toFixed(2)),
         currency,
         exchangeRate,
@@ -146,7 +162,7 @@ const createDepositRequest = async ({
         metadata: {
             userId: userId.toString(),
             paymentMethodId,
-            paymentTransactionId: deposit.paymentTransactionId,
+            transactionId: deposit.transactionId,
             requestedAmount: deposit.requestedAmount,
             currency,
             exchangeRate,

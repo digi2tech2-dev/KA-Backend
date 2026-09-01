@@ -61,12 +61,12 @@ const createPendingVodafoneDeposit = async ({
     const deposit = await depositService.createDepositRequest({
         userId: customer._id,
         paymentMethodId: 'vodafone',
-        paymentTransactionId: transactionId,
+        transactionId,
         requestedAmount: amount,
         currency: 'EGP',
         exchangeRate: 50,
         amountUsd: amount / 50,
-        receiptImage: 'uploads/deposits/test.jpg',
+        isElectronicWallet: true,
         senderDetails: { value: senderPhone },
     });
     return { customer, deposit };

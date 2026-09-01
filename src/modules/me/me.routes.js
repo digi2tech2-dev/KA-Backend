@@ -20,7 +20,7 @@
  *  GET  /api/me/orders                 My orders (status, date, page, limit)
  *  GET  /api/me/orders/:id             My order detail (ownership enforced)
  *
- *  POST /api/me/deposits               Submit deposit request (multipart: receipt)
+ *  POST /api/me/deposits               Submit deposit request (multipart: receipt except Electronic Wallet)
  *  GET  /api/me/deposits               My deposit history
  *  GET  /api/me/deposits/:id           My deposit detail (ownership enforced)
  */
@@ -229,10 +229,10 @@ const createDepositValidation = [
     body('paymentMethodId')
         .notEmpty().withMessage('paymentMethodId is required')
         .isString().trim(),
-    body('paymentTransactionId')
+    body('transactionId')
         .optional({ checkFalsy: true })
         .isString().trim()
-        .isLength({ min: 1, max: 64 }).withMessage('paymentTransactionId must be between 1 and 64 characters'),
+        .isLength({ min: 1, max: 64 }).withMessage('transactionId must be between 1 and 64 characters'),
     body('notes')
         .optional()
         .isString().trim()
@@ -257,9 +257,9 @@ const createDepositValidation = [
 
 /**
  * @route  POST /api/me/deposits
- * @desc   Submit a deposit request with receipt upload (multi-currency)
+ * @desc   Submit a deposit request (Electronic Wallet methods use transactionId without a receipt)
  * @access Active user
- * @body   multipart/form-data: requestedAmount, currency, paymentMethodId, receipt (file), notes?
+ * @body   multipart/form-data: requestedAmount, currency, paymentMethodId, transactionId?, receipt? (required except Electronic Wallet), notes?
  */
 router.post(
     '/deposits',

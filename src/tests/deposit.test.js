@@ -148,17 +148,18 @@ describe('[1] Model validation', () => {
         ).rejects.toThrow(/greater than 0/);
     });
 
-    it('rejects when receiptImage is missing', async () => {
-        await expect(
-            DepositRequest.create({
-                userId,
-                paymentMethodId: new mongoose.Types.ObjectId(),
-                requestedAmount: 100,
-                currency: 'USD',
-                exchangeRate: 1,
-                amountUsd: 100,
-            })
-        ).rejects.toThrow(/receiptImage is required/);
+    it('allows receiptImage to be omitted for Electronic Wallet deposits', async () => {
+        const doc = await DepositRequest.create({
+            userId,
+            paymentMethodId: 'vodafone',
+            transactionId: '022494991382',
+            requestedAmount: 100,
+            currency: 'EGP',
+            exchangeRate: 50,
+            amountUsd: 2,
+        });
+        expect(doc.receiptImage).toBeNull();
+        expect(doc.transactionId).toBe('022494991382');
     });
 
     it('rejects when paymentMethodId is missing', async () => {
@@ -240,6 +241,43 @@ describe('[2] createDepositRequest', () => {
         const found = await DepositRequest.findById(deposit._id);
         expect(found).not.toBeNull();
         expect(found.status).toBe(DEPOSIT_STATUS.PENDING);
+    });
+
+    it('stores Electronic Wallet transactionId as a trimmed string without dropping leading zeros', async () => {
+        const deposit = await depositService.createDepositRequest({
+            userId: customer._id,
+            paymentMethodId: 'vodafone',
+            transactionId: ' 022494991382 ',
+            isElectronicWallet: true,
+            requestedAmount: 500,
+            currency: 'EGP',
+            exchangeRate: 50,
+            amountUsd: 10,
+        });
+
+        expect(deposit.receiptImage).toBeNull();
+        expect(deposit.transactionId).toBe('022494991382');
+    });
+
+    it('requires transactionId for Electronic Wallet deposits but still requires receipts for other methods', async () => {
+        const baseParams = {
+            userId: customer._id,
+            paymentMethodId: 'vodafone',
+            requestedAmount: 500,
+            currency: 'EGP',
+            exchangeRate: 50,
+            amountUsd: 10,
+        };
+
+        await expect(depositService.createDepositRequest({
+            ...baseParams,
+            isElectronicWallet: true,
+        })).rejects.toMatchObject({ code: 'TRANSACTION_ID_REQUIRED' });
+
+        await expect(depositService.createDepositRequest({
+            ...baseParams,
+            paymentMethodId: 'bank-transfer',
+        })).rejects.toMatchObject({ code: 'RECEIPT_REQUIRED' });
     });
 
     it('creates DEPOSIT_REQUESTED audit log (fire-and-forget)', async () => {

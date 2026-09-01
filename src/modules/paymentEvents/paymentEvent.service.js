@@ -58,10 +58,10 @@ const isVodafoneCashMethod = (value) => {
     return normalized === 'vodafone' || normalized === 'vodafonecash' || normalized === 'vfcash';
 };
 
-// KA previously had no dedicated deposit transaction-reference field. Notes
-// are considered only when they contain an explicit label; arbitrary prose is
-// never treated as a financial reference.
+// transactionId is the canonical customer-facing deposit reference. The
+// legacy field and explicitly labelled notes are read only for old deposits.
 const extractDepositTransactionId = (deposit) => {
+    if (deposit.transactionId) return String(deposit.transactionId).trim();
     if (deposit.paymentTransactionId) return String(deposit.paymentTransactionId).trim();
     const noteMatch = String(deposit.notes || '').match(/(?:transaction\s*(?:id|number)|رقم\s*العملية|رقم\s*التحويل)\s*[:：#-]?\s*([0-9]{8,20})/iu);
     return noteMatch ? noteMatch[1] : null;

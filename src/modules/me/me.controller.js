@@ -448,8 +448,21 @@ const getProduct = catchAsync(async (req, res) => {
  * The uploaded file path is stored as `receiptImage`.
  */
 const createDeposit = catchAsync(async (req, res) => {
+    const { requestedAmount, currency, paymentMethodId, transactionId, notes } = req.body;
+    const { getDepositPaymentMethodRequirements } = require('../deposits/depositPaymentMethod.service');
+    const { isElectronicWallet } = await getDepositPaymentMethodRequirements(paymentMethodId);
+    const normalizedTransactionId = String(transactionId || '').trim();
+
+    if (isElectronicWallet && !normalizedTransactionId) {
+        const { BusinessRuleError } = require('../../shared/errors/AppError');
+        throw new BusinessRuleError(
+            'transactionId is required for Electronic Wallet deposits.',
+            'TRANSACTION_ID_REQUIRED'
+        );
+    }
+
     // ── Validate file upload ─────────────────────────────────────────────
-    if (!req.file) {
+    if (!isElectronicWallet && !req.file) {
         const { BusinessRuleError } = require('../../shared/errors/AppError');
         throw new BusinessRuleError(
             'Receipt image is required. Please upload a file.',
@@ -457,7 +470,6 @@ const createDeposit = catchAsync(async (req, res) => {
         );
     }
 
-    const { requestedAmount, currency, paymentMethodId, paymentTransactionId, notes } = req.body;
     const senderDetails = depositService.normalizeSenderDetails(req.body);
 
     // ── Fetch current exchange rate ──────────────────────────────────────
@@ -482,13 +494,14 @@ const createDeposit = catchAsync(async (req, res) => {
     const amountUsd = Number((parsedAmount / exchangeRate).toFixed(2));
 
     // ── Build relative receipt path ──────────────────────────────────────
-    const receiptImage = `uploads/deposits/${req.file.filename}`;
+    const receiptImage = req.file ? `uploads/deposits/${req.file.filename}` : null;
 
     // ── Persist ──────────────────────────────────────────────────────────
     const deposit = await depositService.createDepositRequest({
         userId: req.user._id,
         paymentMethodId,
-        paymentTransactionId: paymentTransactionId || null,
+        transactionId: normalizedTransactionId || null,
+        isElectronicWallet,
         requestedAmount: parsedAmount,
         currency: currency.toUpperCase(),
         exchangeRate,

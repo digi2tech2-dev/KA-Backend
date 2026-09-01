@@ -7,6 +7,7 @@ const { sendSuccess, sendCreated, sendPaginated } = require('../../shared/utils/
 const catchAsync = require('../../shared/utils/catchAsync');
 const { AppError, BusinessRuleError } = require('../../shared/errors/AppError');
 const { analyzeReceiptBuffer } = require('../../shared/services/receiptAnalyzer.service');
+const { getDepositPaymentMethodRequirements } = require('./depositPaymentMethod.service');
 
 const INVALID_RECEIPT_MESSAGE = 'صورة إيصال غير صالحة أو غير واضحة. يرجى رفع إيصال حقيقي.';
 const IMAGE_MIME_TYPE_PREFIX = 'image/';
@@ -76,25 +77,36 @@ const analyzeReceiptUpload = catchAsync(async (req, _res, next) => {
 
 /**
  * POST /api/deposits
- * Customer creates a deposit request with receipt upload.
+ * Customer creates a deposit request. Electronic Wallet methods use a
+ * transactionId and do not require a receipt upload.
  *
  * Multer middleware (createUpload('deposits').single('receipt')) runs
  * BEFORE this handler — req.file is populated on success.
  */
 const createDeposit = catchAsync(async (req, res) => {
+    const { requestedAmount, currency, paymentMethodId, transactionId, notes } = req.body;
+    const { isElectronicWallet } = await getDepositPaymentMethodRequirements(paymentMethodId);
+    const normalizedTransactionId = String(transactionId || '').trim();
+
+    if (isElectronicWallet && !normalizedTransactionId) {
+        throw new BusinessRuleError(
+            'transactionId is required for Electronic Wallet deposits.',
+            'TRANSACTION_ID_REQUIRED'
+        );
+    }
+
     // ── Validate file upload ─────────────────────────────────────────────
-    if (!req.file) {
+    if (!isElectronicWallet && !req.file) {
         throw new BusinessRuleError(
             'Receipt image is required. Please upload a file.',
             'RECEIPT_REQUIRED'
         );
     }
 
-    if (!req.receiptAnalysisValidated) {
+    if (req.file && !req.receiptAnalysisValidated) {
         await validateReceiptUpload(req.file);
     }
 
-    const { requestedAmount, currency, paymentMethodId, paymentTransactionId, notes } = req.body;
     const senderDetails = depositService.normalizeSenderDetails(req.body);
 
     // ── Fetch current exchange rate ──────────────────────────────────────
@@ -118,13 +130,14 @@ const createDeposit = catchAsync(async (req, res) => {
 
     // ── Build relative receipt path ──────────────────────────────────────
     // req.file.path is absolute; we store only the relative part.
-    const receiptImage = `uploads/deposits/${req.file.filename}`;
+    const receiptImage = req.file ? `uploads/deposits/${req.file.filename}` : null;
 
     // ── Persist ──────────────────────────────────────────────────────────
     const deposit = await depositService.createDepositRequest({
         userId: req.user._id,
         paymentMethodId,
-        paymentTransactionId: paymentTransactionId || null,
+        transactionId: normalizedTransactionId || null,
+        isElectronicWallet,
         requestedAmount: parsedAmount,
         currency: currency.toUpperCase(),
         exchangeRate,

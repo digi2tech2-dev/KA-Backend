@@ -26,9 +26,9 @@ router.use(authenticate);
 
 /**
  * @route  POST /api/deposits
- * @desc   Customer submits a new deposit request with receipt upload
+ * @desc   Customer submits a new deposit request; Electronic Wallet methods use transactionId without a receipt
  * @access Authenticated ACTIVE user
- * @body   multipart/form-data: receipt (file), requestedAmount, currency, paymentMethodId, notes?
+ * @body   multipart/form-data: requestedAmount, currency, paymentMethodId, transactionId? and receipt? (required except Electronic Wallet)
  */
 router.post(
     '/',
