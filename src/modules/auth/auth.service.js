@@ -32,10 +32,6 @@ const { getHighestPercentageGroup } = require('../groups/group.service');
 const { Currency } = require('../currency/currency.model');
 const emailService = require('../../services/email.service');
 const {
-    canonicalizeEmail,
-    buildEmailLookup,
-} = require('./emailIdentity');
-const {
     AppError,
     AuthenticationError,
     ConflictError,
@@ -153,16 +149,6 @@ const _safeCompareHash = (candidateHash, storedHash) => {
     );
 };
 
-const _logVerificationDelivery = (context, delivery, status = 'sent') => {
-    console.info('[Auth] Verification email delivery result', {
-        context,
-        status,
-        messageId: delivery?.messageId || null,
-        acceptedCount: Array.isArray(delivery?.accepted) ? delivery.accepted.length : 0,
-        rejectedCount: Array.isArray(delivery?.rejected) ? delivery.rejected.length : 0,
-    });
-};
-
 // ─── register ─────────────────────────────────────────────────────────────────
 
 /**
@@ -173,7 +159,7 @@ const _logVerificationDelivery = (context, delivery, status = 'sent') => {
  *  2. Assigned to the group with the highest markup percentage.
  *  3. Status starts as ACTIVE — no admin approval required.
  *  4. verified = false — user must click email link before login is allowed.
- *  5. A verification email is sent before reporting delivery success.
+ *  5. A verification email is dispatched (fire-and-forget safe).
  */
 const register = async ({
     name,
@@ -188,11 +174,9 @@ const register = async ({
     ref,
     inviteCode,
 }) => {
-    const canonicalEmail = canonicalizeEmail(email);
-
     // ── 1. Prevent duplicate accounts ─────────────────────────────────────────
     const normalizedReferralCode = normalizeIncomingReferralCode(referralCode, refCode, ref, inviteCode);
-    const existing = await User.findOne(buildEmailLookup(canonicalEmail));
+    const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
         if (normalizedReferralCode && existing.referralCode === normalizedReferralCode) {
             throw new AppError('You cannot use your own invitation code.', 400, 'SELF_REFERRAL_NOT_ALLOWED');
@@ -214,7 +198,7 @@ const register = async ({
         : 'USD';
     const normalizedCountry = _normalizeCountry(country);
     const referralOwner = normalizedReferralCode
-        ? await resolveReferralOwnerForNewUser(normalizedReferralCode, canonicalEmail)
+        ? await resolveReferralOwnerForNewUser(normalizedReferralCode, email)
         : null;
 
     // ── 3. Verification token ─────────────────────────────────────────────────
@@ -224,7 +208,7 @@ const register = async ({
     // ── 4. Create user ────────────────────────────────────────────────────────
     const user = await createUserWithReferralCodeRetry({
         name,
-        email: canonicalEmail,
+        email,
         password,
         role: ROLES.CUSTOMER,
         groupId: group._id,
@@ -250,22 +234,19 @@ const register = async ({
         metadata: { email: user.email, name: user.name, groupId: user.groupId },
     });
 
-    // ── 6. Send verification email. The account remains available for resend if SMTP fails. ──
-    let verificationEmailSent = true;
-    try {
-        const delivery = await emailService.sendVerificationEmail(user, rawToken);
-        _logVerificationDelivery('registration', delivery);
-    } catch (err) {
-        verificationEmailSent = false;
-        _logVerificationDelivery('registration', null, 'failed');
-    }
+    // ── 6. Send verification email (fire-and-forget — never block registration) ──
+    const baseUrl = process.env.APP_URL || 'http://localhost:5000';
+    const verificationUrl = `${baseUrl}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
+
+    emailService.sendVerificationEmail(user, rawToken).catch((err) => {
+        console.error('[Auth] Failed to send verification email:', err.message);
+    });
 
     return {
         user: user.toSafeObject(),
-        verificationEmailSent,
-        message: verificationEmailSent
-            ? 'Registration successful! Please check your email to verify your account. Once verified, you can start using the platform immediately.'
-            : 'Registration successful, but we could not deliver your verification email. Please use resend-verification to try again.',
+        message:
+            'Registration successful! Please check your email to verify your account. ' +
+            'Once verified, you can start using the platform immediately.',
     };
 };
 
@@ -281,7 +262,7 @@ const register = async ({
  *   4. Password must match
  */
 const login = async ({ email, password }) => {
-    const user = await User.findOne(buildEmailLookup(email))
+    const user = await User.findOne({ email: email.toLowerCase() })
         .select('+password +verified');
 
     if (!user) {
@@ -423,7 +404,7 @@ const verifyEmail = async (rawToken) => {
  * @param {string} email
  */
 const resendVerification = async (email) => {
-    const user = await User.findOne(buildEmailLookup(email))
+    const user = await User.findOne({ email: email.toLowerCase() })
         .select('+emailVerificationToken +emailVerificationExpires +verified');
 
     if (!user) {
@@ -445,17 +426,9 @@ const resendVerification = async (email) => {
     user.emailVerificationExpires = expiresAt;
     await user.save();
 
-    try {
-        const delivery = await emailService.sendVerificationEmail(user, rawToken);
-        _logVerificationDelivery('resend-verification', delivery);
-    } catch (err) {
-        _logVerificationDelivery('resend-verification', null, 'failed');
-        throw new AppError(
-            'Unable to deliver the verification email. Please try again later.',
-            502,
-            'VERIFICATION_EMAIL_DELIVERY_FAILED'
-        );
-    }
+    emailService.sendVerificationEmail(user, rawToken).catch((err) => {
+        console.error('[Auth] Failed to resend verification email:', err.message);
+    });
 
     return { message: 'If that email exists, a verification link has been sent.' };
 };
@@ -469,7 +442,7 @@ const resendVerification = async (email) => {
  *
  * Note: Google OAuth users bypass the email verification gate
  * because Google has already verified the email. They still need
- * their account must be active before accessing the platform.
+ * admin approval (PENDING → ACTIVE) before accessing the platform.
  *
  * @param {Object} user  — User document from Passport strategy
  * @returns {{ status: string, token?: string, completionToken?: string, user: Object, message?: string }}
@@ -483,15 +456,6 @@ const issueGoogleProfileCompletionToken = async (user) => {
 };
 
 const loginWithGoogle = async (user) => {
-    // PENDING was used by an obsolete Google approval flow. Google has verified
-    // the email, so legacy CUSTOMER accounts can safely follow the current
-    // public-registration policy. REJECTED accounts are handled below.
-    if (user.role === ROLES.CUSTOMER && user.status === USER_STATUS.PENDING) {
-        user.status = USER_STATUS.ACTIVE;
-        user.verified = true;
-        await user.save();
-    }
-
     if (user.status === USER_STATUS.PENDING) {
         // Return a token-less response so the frontend can show the approval message.
         // Some frontends prefer a token even for pending users; adjust as needed.

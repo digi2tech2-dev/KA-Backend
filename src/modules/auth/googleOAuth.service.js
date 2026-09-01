@@ -7,10 +7,6 @@ const {
     buildReferralAssignment,
     createUserWithReferralCodeRetry,
 } = require('../referrals/referral.service');
-const {
-    canonicalizeEmail,
-    buildEmailLookup,
-} = require('./emailIdentity');
 
 const getGoogleProfileEmail = (profile = {}) => (
     profile.emails?.[0]?.value
@@ -20,7 +16,7 @@ const getGoogleProfileEmail = (profile = {}) => (
 
 const resolveGoogleUser = async (profile, oauthState = {}) => {
     const googleId = profile?.id;
-    const email = canonicalizeEmail(getGoogleProfileEmail(profile));
+    const email = String(getGoogleProfileEmail(profile)).trim().toLowerCase();
     const name = profile?.displayName || email.split('@')[0];
 
     if (!googleId) {
@@ -33,20 +29,13 @@ const resolveGoogleUser = async (profile, oauthState = {}) => {
 
     let user = await User.findOne({ googleId });
     if (user) {
-        if (!user.verified) {
-            user.verified = true;
-            await user.save();
-        }
         return { user, isNewUser: false, linkedExistingEmailUser: false };
     }
 
-    user = await User.findOne(buildEmailLookup(email));
+    user = await User.findOne({ email });
     if (user) {
         user.googleId = googleId;
         user.verified = true;
-        if (user.role === ROLES.CUSTOMER && user.status === USER_STATUS.PENDING) {
-            user.status = USER_STATUS.ACTIVE;
-        }
         await user.save();
         return { user, isNewUser: false, linkedExistingEmailUser: true };
     }
