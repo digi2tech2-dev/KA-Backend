@@ -115,7 +115,7 @@ const googleCallback = catchAsync(async (req, res) => {
         return res.redirect(`${frontendBase}/auth?${params.toString()}`);
     }
 
-    // If admin not yet approved — redirect frontend can show "pending" message
+    // Retain the pending redirect only for non-customer/admin-managed accounts.
     if (!result.token) {
         return res.redirect(`${frontendBase}/auth?status=pending`);
     }

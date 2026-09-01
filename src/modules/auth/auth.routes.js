@@ -34,6 +34,7 @@ const authenticate = require('../../shared/middlewares/authenticate');
 const { body } = require('express-validator');
 const config = require('../../config/config');
 const { authLimiter } = require('../../shared/middlewares/rateLimiter');
+const { canonicalizeEmail } = require('./emailIdentity');
 const {
     createGoogleOAuthState,
     consumeGoogleOAuthState,
@@ -137,8 +138,9 @@ router.post(
     authLimiter,
     [
         body('email')
+            .customSanitizer(canonicalizeEmail)
             .isEmail().withMessage('A valid email address is required.')
-            .normalizeEmail(),
+            .notEmpty().withMessage('A valid email address is required.'),
     ],
     validate,
     authController.resendVerification

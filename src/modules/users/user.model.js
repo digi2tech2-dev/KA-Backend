@@ -213,9 +213,8 @@ const userSchema = new mongoose.Schema(
 
         // ── Activation Lifecycle ─────────────────────────────────────────────
         /**
-         * status governs platform access.
-         * New registrations default to PENDING — admin must approve before the
-         * user can log in, place orders, or use their wallet.
+         * status governs platform access. Public registration explicitly creates
+         * customers as ACTIVE; PENDING remains for legacy/admin-managed flows.
          *
          * Backwards-compatibility: the `isActive` virtual below delegates to
          * this field so any code that already reads `user.isActive` continues

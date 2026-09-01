@@ -1,6 +1,7 @@
 'use strict';
 
 const { body } = require('express-validator');
+const { canonicalizeEmail } = require('./emailIdentity');
 
 const registerValidation = [
     body('name')
@@ -9,10 +10,9 @@ const registerValidation = [
         .isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
 
     body('email')
-        .trim()
+        .customSanitizer(canonicalizeEmail)
         .notEmpty().withMessage('Email is required')
-        .isEmail().withMessage('Please provide a valid email address')
-        .normalizeEmail(),
+        .isEmail().withMessage('Please provide a valid email address'),
 
     body('password')
         .notEmpty().withMessage('Password is required')
@@ -49,10 +49,9 @@ const registerValidation = [
 
 const loginValidation = [
     body('email')
-        .trim()
+        .customSanitizer(canonicalizeEmail)
         .notEmpty().withMessage('Email is required')
-        .isEmail().withMessage('Please provide a valid email address')
-        .normalizeEmail(),
+        .isEmail().withMessage('Please provide a valid email address'),
 
     body('password')
         .notEmpty().withMessage('Password is required'),
