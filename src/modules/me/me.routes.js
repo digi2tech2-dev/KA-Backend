@@ -229,6 +229,10 @@ const createDepositValidation = [
     body('paymentMethodId')
         .notEmpty().withMessage('paymentMethodId is required')
         .isString().trim(),
+    body('paymentTransactionId')
+        .optional({ checkFalsy: true })
+        .isString().trim()
+        .isLength({ min: 1, max: 64 }).withMessage('paymentTransactionId must be between 1 and 64 characters'),
     body('notes')
         .optional()
         .isString().trim()

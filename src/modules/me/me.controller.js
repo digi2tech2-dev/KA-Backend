@@ -457,7 +457,7 @@ const createDeposit = catchAsync(async (req, res) => {
         );
     }
 
-    const { requestedAmount, currency, paymentMethodId, notes } = req.body;
+    const { requestedAmount, currency, paymentMethodId, paymentTransactionId, notes } = req.body;
     const senderDetails = depositService.normalizeSenderDetails(req.body);
 
     // ── Fetch current exchange rate ──────────────────────────────────────
@@ -488,6 +488,7 @@ const createDeposit = catchAsync(async (req, res) => {
     const deposit = await depositService.createDepositRequest({
         userId: req.user._id,
         paymentMethodId,
+        paymentTransactionId: paymentTransactionId || null,
         requestedAmount: parsedAmount,
         currency: currency.toUpperCase(),
         exchangeRate,

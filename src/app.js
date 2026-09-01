@@ -32,6 +32,7 @@ const currencyRoutes = require('./modules/currency/currency.routes');
 const whatsappRoutes = require('./modules/whatsapp/whatsapp.routes');
 const resellerRoutes = require('./modules/reseller/reseller.routes');
 const clientCompatRoutes = require('./modules/clientCompat/clientCompat.routes');
+const paymentEventRoutes = require('./modules/paymentEvents/paymentEvent.routes');
 const uploadRoutes = require('./shared/routes/upload.routes');
 const path = require('path');
 // Seed default settings on startup (idempotent, no-op if already seeded)
@@ -71,7 +72,14 @@ app.use(
 );
 
 // ── Request Parsing ───────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// Preserve the exact bytes supplied by a caller. The Vodafone SMS bridge
+// authenticates its payload with an HMAC over these bytes, not re-serialized JSON.
+app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+        req.rawBody = Buffer.from(buffer);
+    },
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ── Logging ───────────────────────────────────────────────────────────────────
@@ -117,6 +125,7 @@ app.use(`${API_PREFIX}/orders`, orderRoutes);
 app.use(`${API_PREFIX}/wallet`, walletRoutes);
 app.use(`${API_PREFIX}/audit`, auditRoutes);
 app.use(`${API_PREFIX}/deposits`, depositRoutes);
+app.use(`${API_PREFIX}/payment-events`, paymentEventRoutes);
 app.use(`${API_PREFIX}/providers`, providerRoutes);
 app.use(`${API_PREFIX}/v1/reseller`, resellerRoutes);
 app.use(`${API_PREFIX}/client/api`, clientCompatRoutes);

@@ -108,6 +108,7 @@ const normalizeSenderDetails = (source = {}) => {
 const createDepositRequest = async ({
     userId,
     paymentMethodId,
+    paymentTransactionId = null,
     requestedAmount,
     currency,
     exchangeRate,
@@ -124,6 +125,7 @@ const createDepositRequest = async ({
     const deposit = await DepositRequest.create({
         userId,
         paymentMethodId,
+        paymentTransactionId: paymentTransactionId ? String(paymentTransactionId).trim() : null,
         requestedAmount: Number(parseFloat(requestedAmount).toFixed(2)),
         currency,
         exchangeRate,
@@ -144,6 +146,7 @@ const createDepositRequest = async ({
         metadata: {
             userId: userId.toString(),
             paymentMethodId,
+            paymentTransactionId: deposit.paymentTransactionId,
             requestedAmount: deposit.requestedAmount,
             currency,
             exchangeRate,
@@ -155,6 +158,20 @@ const createDepositRequest = async ({
     });
 
     notifyNewDeposit(deposit);
+
+    // The bridge module is deliberately loaded lazily to avoid a deposit ↔
+    // payment-event import cycle. This only links a previously stored event;
+    // it never changes wallet state while auto approval is disabled.
+    try {
+        const paymentEventService = require('../paymentEvents/paymentEvent.service');
+        paymentEventService.matchUnmatchedEventsForDeposit(deposit._id).catch((err) => {
+            console.error('[PaymentEvent] post-deposit matching failed:', err.message);
+        });
+    } catch (err) {
+        // The module may be unavailable during partial deployments. Deposit
+        // creation must keep its pre-existing behaviour in that case.
+        console.error('[PaymentEvent] post-deposit matcher unavailable:', err.message);
+    }
 
     try {
         whatsappService.sendAdminNotification(
@@ -242,7 +259,15 @@ const approveDeposit = async (depositId, adminId, adminOverrides = {}, auditCont
         status: DEPOSIT_STATUS.APPROVED,
         reviewedBy: adminId,
         reviewedAt: new Date(),
+        reviewSource: adminOverrides.reviewSource || 'ADMIN',
     };
+
+    if (adminOverrides.paymentEventId) {
+        $setFields.paymentEventId = adminOverrides.paymentEventId;
+    }
+    if (adminOverrides.autoVerifiedAt) {
+        $setFields.autoVerifiedAt = adminOverrides.autoVerifiedAt;
+    }
 
     // Persist admin overrides on the deposit document if provided
     if (adminOverrides.amount != null) {
@@ -342,6 +367,8 @@ const approveDeposit = async (depositId, adminId, adminOverrides = {}, auditCont
             referralCommissionOutcome: commissionOutcome?.outcome ?? null,
             referralCommissionId: commissionOutcome?.commission?._id?.toString() ?? null,
             reviewedBy: adminId.toString(),
+            reviewSource: updated.reviewSource,
+            paymentEventId: updated.paymentEventId?.toString() ?? null,
         },
     });
 

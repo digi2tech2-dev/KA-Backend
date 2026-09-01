@@ -24,6 +24,11 @@ const REFERRAL_COMMISSION_PROCESSING_STATUS = Object.freeze({
     FAILED: 'FAILED',
 });
 
+const DEPOSIT_REVIEW_SOURCES = Object.freeze({
+    ADMIN: 'ADMIN',
+    VODAFONE_SMS_AUTO: 'VODAFONE_SMS_AUTO',
+});
+
 const depositRequestSchema = new mongoose.Schema(
     {
         /** Customer who created this request. */
@@ -137,6 +142,14 @@ const depositRequestSchema = new mongoose.Schema(
             },
         },
 
+        /** Optional immutable payment reference supplied by the customer. */
+        paymentTransactionId: {
+            type: String,
+            trim: true,
+            maxlength: [64, 'paymentTransactionId cannot exceed 64 characters'],
+            default: null,
+        },
+
         /** Current lifecycle status. */
         status: {
             type: String,
@@ -165,6 +178,26 @@ const depositRequestSchema = new mongoose.Schema(
 
         /** Timestamp of the admin review decision. */
         reviewedAt: {
+            type: Date,
+            default: null,
+        },
+
+        // ADMIN is the existing behaviour. The other value is reserved for the
+        // explicitly configured bridge path and prevents a system action from
+        // being represented as a manual review.
+        reviewSource: {
+            type: String,
+            enum: Object.values(DEPOSIT_REVIEW_SOURCES),
+            default: DEPOSIT_REVIEW_SOURCES.ADMIN,
+        },
+
+        paymentEventId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'PaymentEvent',
+            default: null,
+        },
+
+        autoVerifiedAt: {
             type: Date,
             default: null,
         },
@@ -218,6 +251,7 @@ depositRequestSchema.index({ status: 1, createdAt: 1 });
  * Customer: list their own deposit history.
  */
 depositRequestSchema.index({ userId: 1, createdAt: -1 });
+depositRequestSchema.index({ status: 1, paymentMethodId: 1, paymentTransactionId: 1 });
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────
 
@@ -241,4 +275,5 @@ module.exports = {
     DepositRequest,
     DEPOSIT_STATUS,
     REFERRAL_COMMISSION_PROCESSING_STATUS,
+    DEPOSIT_REVIEW_SOURCES,
 };
