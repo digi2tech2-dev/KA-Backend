@@ -55,7 +55,11 @@ const normalizePaymentMethod = (value) => String(value || '')
 
 const isVodafoneCashMethod = (value) => {
     const normalized = normalizePaymentMethod(value);
-    return normalized === 'vodafone' || normalized === 'vodafonecash' || normalized === 'vfcash';
+    return normalized === 'vodafone'
+        || normalized === 'vodafonecash'
+        || normalized === 'vfcash'
+        || normalized.includes('vodafonecash')
+        || normalized.includes('vfcash');
 };
 
 // transactionId is the canonical customer-facing deposit reference. The
@@ -165,7 +169,7 @@ const matchPaymentEvent = async (eventId) => {
 
     const deposits = await DepositRequest.find({
         status: DEPOSIT_STATUS.PENDING,
-        currency: 'EGP',
+        currency: { $in: ['EGP', 'EGY'] },
     });
     const methodCandidates = deposits.filter((deposit) => isVodafoneCashMethod(deposit.paymentMethodId));
     const transactionCandidates = methodCandidates.filter((deposit) => extractDepositTransactionId(deposit) === event.transactionId);
@@ -206,7 +210,7 @@ const matchPaymentEvent = async (eventId) => {
 
 const matchUnmatchedEventsForDeposit = async (depositId) => {
     const deposit = await DepositRequest.findById(depositId).select('status currency paymentMethodId');
-    if (!deposit || deposit.status !== DEPOSIT_STATUS.PENDING || deposit.currency !== 'EGP' || !isVodafoneCashMethod(deposit.paymentMethodId)) return [];
+    if (!deposit || deposit.status !== DEPOSIT_STATUS.PENDING || !['EGP', 'EGY'].includes(deposit.currency) || !isVodafoneCashMethod(deposit.paymentMethodId)) return [];
     const events = await PaymentEvent.find({
         parseStatus: 'PARSED',
         matchStatus: { $in: [PAYMENT_EVENT_MATCH_STATUS.UNMATCHED, PAYMENT_EVENT_MATCH_STATUS.MISMATCH, PAYMENT_EVENT_MATCH_STATUS.AMBIGUOUS] },

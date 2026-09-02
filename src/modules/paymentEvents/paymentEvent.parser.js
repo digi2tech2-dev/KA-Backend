@@ -87,12 +87,20 @@ const parsePaymentSms = (rawMessage) => {
     if (!text.trim()) {
         return { sourceType: PAYMENT_EVENT_SOURCE_TYPES.NON_PAYMENT_MESSAGE, parseStatus: 'IGNORED' };
     }
+
+    // Payment SMS messages can contain balance text such as "رصيدك الحالي".
+    // Always attempt to parse supported payment formats before applying
+    // the generic non-payment-message filter.
+    const parsedPayment = parseVodafoneWallet(text) || parseInstaPay(text);
+    if (parsedPayment) {
+        return parsedPayment;
+    }
+
     if (isKnownNonPaymentMessage(text)) {
         return { sourceType: PAYMENT_EVENT_SOURCE_TYPES.NON_PAYMENT_MESSAGE, parseStatus: 'IGNORED' };
     }
-    return parseVodafoneWallet(text)
-        || parseInstaPay(text)
-        || { sourceType: PAYMENT_EVENT_SOURCE_TYPES.NON_PAYMENT_MESSAGE, parseStatus: 'IGNORED' };
+
+    return { sourceType: PAYMENT_EVENT_SOURCE_TYPES.NON_PAYMENT_MESSAGE, parseStatus: 'IGNORED' };
 };
 
 module.exports = {
