@@ -131,6 +131,23 @@ const createDepositRequest = async ({
             'TRANSACTION_ID_REQUIRED'
         );
     }
+
+    // A provider transaction reference represents one real payment and must
+    // never be reused for another deposit request.
+    if (isElectronicWallet && normalizedTransactionId) {
+        const existingTransaction = await DepositRequest.findOne({
+            paymentMethodId,
+            transactionId: normalizedTransactionId,
+        }).select('_id status');
+
+        if (existingTransaction) {
+            throw new BusinessRuleError(
+                'This transaction ID has already been used.',
+                'TRANSACTION_ID_ALREADY_USED'
+            );
+        }
+    }
+
     if (!isElectronicWallet && !receiptImage) {
         throw new BusinessRuleError(
             'Receipt image is required. Please upload a file.',
