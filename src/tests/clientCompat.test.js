@@ -13,8 +13,10 @@ const {
     USER_STATUS,
 } = require('./testHelpers');
 const { Category } = require('../modules/categories/category.model');
+const { Setting } = require('../modules/admin/setting.model');
 const { Order, ORDER_STATUS } = require('../modules/orders/order.model');
 const { mapProduct } = require('../modules/clientCompat/clientCompat.mappers');
+const { compatRateLimitHandler } = require('../shared/middlewares/rateLimiter');
 
 let app;
 let server;
@@ -46,6 +48,27 @@ const rawGet = (path, headers = {}) => new Promise((resolve, reject) => {
     });
 
     req.on('error', reject);
+    req.end();
+});
+
+const rawPost = (path, body, headers = {}) => new Promise((resolve, reject) => {
+    const url = new URL(path, baseUrl);
+    const payload = JSON.stringify(body);
+    const req = http.request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), ...headers },
+    }, (res) => {
+        let responseBody = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { responseBody += chunk; });
+        res.on('end', () => {
+            try {
+                resolve({ status: res.statusCode, headers: res.headers, body: responseBody ? JSON.parse(responseBody) : null });
+            } catch (err) { reject(err); }
+        });
+    });
+    req.on('error', reject);
+    req.write(payload);
     req.end();
 });
 
@@ -221,6 +244,7 @@ describe('Client compatibility API authentication and profile', () => {
             expect(res.body).toEqual({
                 balance: '150',
                 email: reseller.email,
+                currency: 'USD',
             });
         }
 
@@ -229,6 +253,7 @@ describe('Client compatibility API authentication and profile', () => {
         expect(aliasRes.body).toEqual({
             balance: '150',
             email: reseller.email,
+            currency: 'USD',
         });
     });
 });
@@ -480,6 +505,67 @@ describe('Client compatibility API products and content', () => {
 });
 
 describe('Client compatibility API orders', () => {
+    test('creates canonical POST orders and exposes UUID, currency, fields, and uuids checks', async () => {
+        const { token } = await createApiReseller({ token: 'canonical-post-token' });
+        const product = await createCompatProduct({ executionType: 'manual' });
+        const payload = {
+            product_id: product.compatProductId,
+            qty: 1,
+            order_uuid: 'canonical-post-order-1',
+            params: { player_id: '10026' },
+        };
+        const created = await rawPost('/client/api/orders', payload, authHeaders(token));
+        expect(created.status).toBe(200);
+        expect(created.headers['cache-control']).toContain('no-store');
+        expect(created.body.data).toEqual(expect.objectContaining({
+            order_uuid: payload.order_uuid,
+            currency: 'USD',
+            status: 'wait',
+        }));
+
+        const checked = await rawGet('/client/api/check?uuids=canonical-post-order-1', authHeaders(token));
+        expect(checked.body.data[0]).toEqual(expect.objectContaining({ order_uuid: payload.order_uuid }));
+
+        const products = await rawGet('/client/api/products', authHeaders(token));
+        expect(products.body.find((item) => item.id === product.compatProductId).fields).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: 'player_id', required: true }),
+        ]));
+    });
+
+    test('separates canonical validation code 124 from IP restriction code 123', async () => {
+        const { token } = await createApiReseller({ token: 'canonical-errors-token' });
+        const missingProduct = await rawPost('/client/api/orders', { qty: 1, order_uuid: 'missing-product' }, authHeaders(token));
+        expect(missingProduct.body.code).toBe(124);
+
+        const { token: whitelistToken } = await createApiReseller({
+            token: 'canonical-ip-token',
+            userOverrides: { whitelistIps: ['198.51.100.5'] },
+        });
+        const denied = await rawGet('/client/api/profile', { ...authHeaders(whitelistToken), 'X-Forwarded-For': '203.0.113.10' });
+        expect(denied.body.code).toBe(123);
+    });
+
+    test('uses code 130 only to block compatibility placement during maintenance', async () => {
+        const { token } = await createApiReseller({ token: 'canonical-maintenance-token' });
+        const product = await createCompatProduct({ executionType: 'manual' });
+        await Setting.create({ key: 'maintenanceMode', value: true, description: 'test' });
+        const blocked = await rawPost('/client/api/orders', {
+            product_id: product.compatProductId, qty: 1, order_uuid: 'maintenance-order',
+        }, authHeaders(token));
+        expect(blocked.status).toBe(503);
+        expect(blocked.body).toEqual({ status: 'ERROR', code: 130, message: 'Site is under maintenance' });
+
+        const profile = await rawGet('/client/api/profile', authHeaders(token));
+        expect(profile.status).toBe(200);
+    });
+
+    test('uses the canonical compatibility rate-limit envelope', () => {
+        const json = jest.fn();
+        const status = jest.fn(() => ({ json }));
+        compatRateLimitHandler({}, { status });
+        expect(status).toHaveBeenCalledWith(429);
+        expect(json).toHaveBeenCalledWith({ status: 'ERROR', code: 111, message: 'Try again later' });
+    });
     test('creates orders through GET and idempotent retries do not double debit', async () => {
         const { reseller, token } = await createApiReseller({ token: 'order-token' });
         const product = await createCompatProduct({
@@ -661,7 +747,7 @@ describe('Client compatibility API orders', () => {
             authHeaders(token)
         );
         expect(res.status).toBe(400);
-        expect(res.body.code).toBe(123);
+        expect(res.body.code).toBe(124);
 
         res = await rawGet(
             `/client/api/newOrder/${product.compatProductId}/params?qty=nope&order_uuid=bad-qty`,

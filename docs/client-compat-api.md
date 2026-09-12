@@ -1,266 +1,119 @@
-# Client Compatibility API
+# Canonical B2B API v1
 
-This API mimics common reseller website integrations so clients can switch to Coins Store by changing the base URL and API token.
+The public B2B base is `https://your-domain.example/client/api`. Each K&A
+deployment changes only the domain and API token. Product and category IDs are
+numeric compatibility IDs; do not use MongoDB IDs in B2B requests.
 
-## Base URLs
-
-Primary:
-
-```text
-https://coins-stores.com/client/api
-```
-
-Alias:
-
-```text
-https://coins-stores.com/api/client/api
-```
-
-The existing `/api/v1/reseller` and `/api/client` APIs keep their existing response format.
+`/api/client/api` remains a legacy alias of the same API. Existing
+`/api/v1/reseller` and `/api/client` integrations retain their own contracts.
 
 ## Authentication
 
-Send one of these headers:
+Use `api-token: YOUR_API_TOKEN`. The legacy `x-api-key` and
+`Authorization: Bearer YOUR_API_TOKEN` forms are also accepted. Accounts must
+be active, API-enabled, non-deleted, and satisfy any configured exact IP list.
 
-```http
-api-token: YOUR_API_TOKEN
-x-api-key: YOUR_API_TOKEN
-Authorization: Bearer YOUR_API_TOKEN
-```
+## Endpoints
 
-The account must be active, API-enabled, and allowed by any configured IP whitelist.
-
-## Profile
-
-```http
-GET /profile
-```
-
-Response:
-
-```json
-{
-  "balance": "8788.683",
-  "email": "user@email.com"
-}
-```
-
-`balance` is the authenticated reseller spendable balance in the user's currency. It is derived from `availableBalance = max(0, walletBalance + creditLimit)` and does not subtract `creditUsed` again.
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/profile` | Spendable balance, email, and currency. |
+| GET | `/products` | Optional `products_id=1000,1001` and legacy `base=1`. |
+| GET | `/content/0` | Root categories and uncategorized products. |
+| GET | `/content/:parentId` | Numeric compatibility category ID. |
+| POST | `/orders` | Canonical order placement. |
+| GET | `/check?orders=ID_1,ID_2` | Lookup by compatibility order ID. |
+| GET | `/check?orders=uuid1,uuid2&uuid=1` | Legacy UUID lookup. |
+| GET | `/check?uuids=uuid1,uuid2` | Canonical UUID lookup. |
+| GET | `/newOrder/:productId/params` | Permanently supported legacy placement route. |
 
 ## Products
 
-```http
-GET /products
-GET /products?products_id=365,366,367
-GET /products?base=1
-GET /products?products_id=365,366&base=1
-```
-
-Full response:
-
-```json
-[
-  {
-    "id": 365,
-    "name": "UC 60",
-    "price": 0.104,
-    "params": ["Player ID"],
-    "category_name": "PUBG Global ID UC",
-    "available": true,
-    "qty_values": null,
-    "product_type": "package",
-    "parent_id": 7,
-    "base_price": 0.104,
-    "category_img": "images/category/1710948113.webp"
-  }
-]
-```
-
-Minimal response with `base=1`:
-
-```json
-[
-  {
-    "id": 365,
-    "name": "UC 60"
-  }
-]
-```
-
-`id` is the stable numeric compatibility product ID. It is not the internal MongoDB ID.
-
-`qty_values` meanings:
-
-- `null`: fixed/package product.
-- `{ "min": "1", "max": "50" }`: amount/range product.
-- `["110", "150"]`: fixed allowed quantities, only when the internal product explicitly supports fixed allowed quantities.
-
-## Content
-
-```http
-GET /content/0
-GET /content/:parentId
-```
-
-`parentId` is a stable numeric compatibility category ID. `0` means root content.
-
-Response:
+Products retain compatibility price and quantity aliases. New consumers should
+use canonical structured fields while legacy consumers may continue using
+`params`:
 
 ```json
 {
-  "status": "OK",
-  "data": {
-    "categories": [
-      {
-        "id": 7,
-        "name": "PUBG Global ID UC",
-        "parent_id": 0,
-        "image": "images/category/1710948113.webp",
-        "available": true
-      }
-    ],
-    "products": [
-      {
-        "id": 365,
-        "name": "UC 60",
-        "price": 0.104,
-        "params": ["Player ID"],
-        "category_name": "PUBG Global ID UC",
-        "available": true,
-        "qty_values": null,
-        "product_type": "package",
-        "parent_id": 7,
-        "base_price": 0.104,
-        "category_img": "images/category/1710948113.webp"
-      }
-    ]
-  }
-}
-```
-
-## New Order
-
-```http
-GET /newOrder/:productId/params?qty=1&playerId=test&server=EU&order_uuid=abc-123
-```
-
-Rules:
-
-- `productId` is the numeric compatibility product ID.
-- `qty` is required and must be valid for the product.
-- `order_uuid` is required and is used as the internal idempotency key.
-- All query params except `qty` and `order_uuid` become order field values.
-- Repeating the same `order_uuid` for the same reseller returns the original order and does not debit again.
-- This endpoint returns `Cache-Control: no-store`.
-
-Success response:
-
-```json
-{
-  "status": "OK",
-  "data": {
-    "order_id": "ID_9fffb0d849a45215",
-    "status": "wait",
-    "price": 1.26048,
-    "data": {
-      "playerId": "test",
-      "server": "EU"
-    },
-    "replay_api": null
-  }
-}
-```
-
-## Check Orders
-
-```http
-GET /check?orders=[ID_1,ID_2]
-GET /check?orders=ID_1,ID_2
-GET /check?orders=[uuid1,uuid2]&uuid=1
-```
-
-Rules:
-
-- Without `uuid=1`, lookup is by compatibility order ID with order number fallback.
-- With `uuid=1`, lookup is by `order_uuid` / idempotency key.
-- Only orders owned by the authenticated reseller are returned.
-- This endpoint returns `Cache-Control: no-store`.
-
-Response:
-
-```json
-{
-  "status": "OK",
-  "data": [
+  "id": 1000,
+  "name": "Example product",
+  "price": 1.5,
+  "currency": "USD",
+  "params": ["Player ID"],
+  "fields": [
     {
-      "order_id": "ID_9fffb0d849a45215",
-      "quantity": 1,
-      "data": {
-        "playerId": "test"
-      },
-      "created_at": "2025-04-10 13:55:48",
-      "product_name": "A-60UC-stock",
-      "price": "1.2604800000000000",
-      "status": "accept",
-      "replay_api": null
+      "key": "player_id",
+      "label": "Player ID",
+      "type": "text",
+      "required": true,
+      "options": []
     }
   ]
 }
 ```
 
-## Status Values
+## Create an order
 
-- `accept`: completed.
-- `reject`: failed or canceled.
-- `wait`: pending, processing, manual review, or partial.
-
-## Error Format
-
-Compatibility endpoints return:
+```http
+POST /orders
+Content-Type: application/json
+```
 
 ```json
 {
-  "status": "ERROR",
-  "code": 100,
-  "message": "Insufficient balance"
+  "product_id": 1000,
+  "qty": 1,
+  "order_uuid": "client-generated-idempotency-key",
+  "params": {
+    "player_id": "123456789"
+  }
 }
 ```
 
-Codes:
+`order_uuid` is required and maps to the unique `(userId, idempotencyKey)`
+constraint. Retrying it returns the original order without another debit.
+
+```json
+{
+  "status": "OK",
+  "data": {
+    "order_id": "ID_0123456789abcdef",
+    "order_uuid": "client-generated-idempotency-key",
+    "status": "wait",
+    "price": 1.5,
+    "currency": "USD"
+  }
+}
+```
+
+Order checks include `order_uuid` additively. Creation and checking use
+no-store response headers.
+
+## Statuses and errors
+
+| External status | Meaning |
+| --- | --- |
+| `accept` | Completed |
+| `wait` | Pending, processing, partial, manual review, or in-flight |
+| `reject` | Failed or cancelled |
+
+Compatibility errors use `{ "status": "ERROR", "code": number, "message": string }`.
 
 | Code | Meaning |
 | --- | --- |
 | 100 | Insufficient balance |
-| 105 | Quantity not available |
-| 106 | Quantity not allowed |
-| 109 | Product deleted or not found |
-| 110 | Product not available now |
-| 111 | Try again after 1 minute / rate limited |
-| 112 | Quantity is too small |
-| 113 | Quantity is too large |
-| 114 | Unknown order creation error |
-| 120 | API token is required |
-| 121 | Token error |
-| 122 | Not allowed to use API / suspended / API disabled / inactive account |
-| 123 | IP not allowed or validation error |
-| 130 | Site under maintenance, if maintenance mode is enabled |
-| 500 | Unknown internal error |
+| 105–106 | Quantity unavailable / invalid quantity |
+| 109–110 | Product not found / unavailable |
+| 111 | Rate limited |
+| 112–114 | Quantity/business order rules |
+| 120–122 | Token required, invalid, or disabled/inactive account |
+| 123 | IP not allowed |
+| 124 | Validation error |
+| 130 | Maintenance; placement only |
+| 500 | Internal error |
 
-## Backfill
+When `maintenanceMode` is enabled, only the two placement routes return HTTP
+503 / code 130. Catalogue, profile, and status routes remain available.
 
-Existing products and categories need numeric compatibility IDs before integrators use product/category IDs.
-
-Run from `Backend`:
-
-```bash
-node scripts/backfill-compat-ids.js
-```
-
-The script is idempotent and only assigns IDs to records missing `compatProductId` or `compatCategoryId`.
-
-## Security Notes
-
-- The API reuses reseller API-token authentication.
-- Order creation reuses the existing safe order service, including wallet deduction, idempotency, validation, audit, provider dispatch, refunds, and status lifecycle.
-- Provider tokens, internal cost-only fields, and admin-only fields are not returned.
-- GET-based order creation is supported only for compatibility; clients should always provide a unique `order_uuid`.
+Run `node scripts/backfill-compat-ids.js` as a controlled deployment action
+before exposing existing catalogue data that lacks compatibility IDs.

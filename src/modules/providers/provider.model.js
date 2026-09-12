@@ -36,6 +36,15 @@ const providerSchema = new mongoose.Schema(
             lowercase: true,
         },
 
+        // Optional explicit adapter registry key. Existing providers keep
+        // resolving through slug/name when this remains unset.
+        adapterType: {
+            type: String,
+            trim: true,
+            lowercase: true,
+            default: null,
+        },
+
         /**
          * Base URL of the provider's API.
          * The adapter uses this as the root for all HTTP calls.

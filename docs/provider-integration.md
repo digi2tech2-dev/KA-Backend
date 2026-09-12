@@ -29,6 +29,16 @@ Customers only ever see Layer 3. Layer 2 is admin-only. Layer 1 is system config
 
 The factory resolves the correct adapter class for a given Provider document.
 
+Canonical B2B providers use the optional `adapterType: "canonical-b2b"` field.
+Resolution is `adapterType`, then legacy `slug`, then legacy `name`; existing
+K&A aliases and production mock-fallback safeguards remain authoritative.
+`baseUrl` for this adapter must already be the complete `/client/api` URL.
+
+Canonical placement uses the persisted local `orderNumber` as its upstream
+`order_uuid`. Timeout or ambiguous transport outcomes are recovered by
+reference lookup and remain funded until recovered or moved to manual review;
+they are never auto-refunded merely because placement was uncertain.
+
 ### Resolution Order
 
 1. **`provider.slug`** (preferred) — lowercase, URL-safe, e.g. `"royal-crown"`

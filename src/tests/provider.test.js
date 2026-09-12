@@ -162,6 +162,15 @@ describe('[1] Provider Model', () => {
         const p = await Provider.create({ name: 'DefProv', baseUrl: 'https://x.com' });
         expect(p.isActive).toBe(true);
     });
+
+    it('keeps adapterType optional and persists a normalized canonical value through CRUD', async () => {
+        const legacy = await makeProvider();
+        const canonical = await makeProvider({ adapterType: ' CANONICAL-B2B ' });
+        expect(legacy.adapterType).toBeNull();
+        expect(canonical.adapterType).toBe('canonical-b2b');
+        const updated = await providerService.updateProvider(canonical._id, { adapterType: ' CANONICAL-B2B ' });
+        expect(updated.adapterType).toBe('canonical-b2b');
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

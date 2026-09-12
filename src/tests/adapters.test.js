@@ -55,6 +55,7 @@ const { TorosfonAdapter } = require('../modules/providers/adapters/toros.adapter
 const { AlkasrVipAdapter } = require('../modules/providers/adapters/alkasr.adapter');
 const { RoyalCrownAdapter } = require('../modules/providers/adapters/royalCrown.adapter');
 const { DealerApiAdapter } = require('../modules/providers/adapters/dealerApi.service');
+const { CanonicalB2BAdapter } = require('../modules/providers/adapters/canonicalB2B.adapter');
 const { getProviderAdapter, registerAdapter } = require('../modules/providers/adapters/adapter.factory');
 const { toInternalStatus, isTerminal, requiresRefund } = require('../modules/providers/statusMapper');
 
@@ -648,6 +649,24 @@ describe('[8] adapter.factory — resolution', () => {
             baseUrl: 'https://x.com', apiToken: 'tok',
         });
         expect(adapter).toBeInstanceOf(TorosfonAdapter);
+    });
+
+    it('resolves canonical-b2b by adapterType before a legacy slug', () => {
+        const adapter = getProviderAdapter({
+            adapterType: ' CANONICAL-B2B ', slug: 'toros', name: 'Canonical Site',
+            baseUrl: 'https://site.example/client/api', apiToken: 'tok',
+        });
+        expect(adapter).toBeInstanceOf(CanonicalB2BAdapter);
+    });
+
+    test.each([
+        'brand1-card', 'zero1-store', 'miral-store', 'mlook-alarab',
+        'alshaikh-store', 'golden-xcoin', 'yassen-card', '3amo-card',
+        'dolr-card', 'x3-store', 'helmy-card', 'sultan-card',
+        'khaled-cash', 'alfaore-store',
+    ])('keeps K&A legacy Alkasr alias %s', (slug) => {
+        const adapter = getProviderAdapter({ slug, name: slug, baseUrl: 'https://x.example', apiToken: 'tok' });
+        expect(adapter).toBeInstanceOf(AlkasrVipAdapter);
     });
 
     it('resolves TorosfonAdapter by slug "torosfon"', () => {
