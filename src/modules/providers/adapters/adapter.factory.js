@@ -155,6 +155,12 @@ const registry = new Map([
     ['alfaore store', AlkasrVipAdapter], // name
     ['alfaorestore', AlkasrVipAdapter],  // compact
 
+    // ── alarrab cash (Uses Alkasr Adapter) ─────────────────────────────────────
+    ['alarrab-cash', AlkasrVipAdapter], // slug
+    ['alarrab cash', AlkasrVipAdapter], // name
+    ['alarrabcash', AlkasrVipAdapter],  // compact
+
+
 
     // -- Ibra Store ------------------------------------------------------------
     ['ibra-store', IbraAdapter],
