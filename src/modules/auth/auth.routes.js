@@ -28,6 +28,7 @@ const {
     disable2FAValidation,
     verify2FAValidation,
     completeGoogleProfileValidation,
+    nativeGoogleValidation,
 } = require('./auth.validation');
 const validate = require('../../shared/middlewares/validate');
 const authenticate = require('../../shared/middlewares/authenticate');
@@ -48,6 +49,16 @@ const requireGoogleConfig = (req, res, next) => {
             success: false,
             message: 'Google OAuth is not configured on this server. ' +
                 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env.',
+        });
+    }
+    next();
+};
+
+const requireGoogleWebClientId = (req, res, next) => {
+    if (!config.google.webClientId) {
+        return res.status(503).json({
+            success: false,
+            message: 'Google native sign-in is not configured on this server. Set GOOGLE_WEB_CLIENT_ID or GOOGLE_CLIENT_ID.',
         });
     }
     next();
@@ -155,6 +166,15 @@ router.get(
     '/google',
     requireGoogleConfig,
     startGoogleOAuth
+);
+
+router.post(
+    '/google/native',
+    authLimiter,
+    requireGoogleWebClientId,
+    nativeGoogleValidation,
+    validate,
+    authController.nativeGoogleLogin
 );
 
 /**

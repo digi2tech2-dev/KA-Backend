@@ -28,6 +28,7 @@ const adminRoutes = require('./modules/admin/admin.routes');    // ← dashboard
 const meRoutes = require('./modules/me/me.routes');          // ← user panel
 const targetRoutes = require('./modules/targets/target.routes'); // ← target coin purchases
 const notificationRoutes = require('./modules/notifications/notification.routes'); // ← notifications
+const devicePushTokenRoutes = require('./modules/pushTokens/devicePushToken.routes');
 const currencyRoutes = require('./modules/currency/currency.routes');
 const whatsappRoutes = require('./modules/whatsapp/whatsapp.routes');
 const resellerRoutes = require('./modules/reseller/reseller.routes');
@@ -138,6 +139,7 @@ app.use(`${API_PREFIX}/client`, resellerRoutes);
 app.use(`${API_PREFIX}/me`, meRoutes);
 app.use(`${API_PREFIX}/me/targets`, targetRoutes);
 app.use(`${API_PREFIX}/me/notifications`, notificationRoutes);
+app.use(`${API_PREFIX}/me/devices`, devicePushTokenRoutes);
 
 // ── Public Categories (no auth required — used by storefront/guest pages) ─────
 app.get(`${API_PREFIX}/categories`, async (req, res) => {

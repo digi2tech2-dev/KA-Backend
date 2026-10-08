@@ -102,6 +102,23 @@ const completeGoogleProfileValidation = [
         .isLength({ min: 3, max: 3 }).withMessage('Currency code must be 3 characters'),
 ];
 
+const nativeGoogleValidation = [
+    body('idToken')
+        .isString().withMessage('idToken must be a string')
+        .trim()
+        .isLength({ min: 20, max: 10000 }).withMessage('idToken is invalid'),
+    body('intent')
+        .optional()
+        .isString()
+        .trim()
+        .isIn(['login', 'signup']).withMessage('intent must be login or signup'),
+    body(['referralCode', 'refCode', 'ref', 'inviteCode'])
+        .optional({ checkFalsy: true })
+        .trim()
+        .isLength({ min: 6, max: 32 }).withMessage('Invitation code must be between 6 and 32 characters')
+        .matches(/^[A-Za-z0-9]+$/).withMessage('Invitation code must contain letters and numbers only'),
+];
+
 module.exports = {
     registerValidation,
     loginValidation,
@@ -109,4 +126,5 @@ module.exports = {
     disable2FAValidation,
     verify2FAValidation,
     completeGoogleProfileValidation,
+    nativeGoogleValidation,
 };

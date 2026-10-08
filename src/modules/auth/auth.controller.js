@@ -13,6 +13,8 @@
  */
 
 const authService = require('./auth.service');
+const { resolveGoogleUser } = require('./googleOAuth.service');
+const { verifyNativeGoogleIdToken } = require('./nativeGoogle.service');
 const { sendSuccess, sendCreated } = require('../../shared/utils/apiResponse');
 const catchAsync = require('../../shared/utils/catchAsync');
 const config = require('../../config/config');
@@ -131,6 +133,16 @@ const completeGoogleProfile = catchAsync(async (req, res) => {
     sendSuccess(res, result, 'Profile completed successfully.');
 });
 
+const nativeGoogleLogin = catchAsync(async (req, res) => {
+    const profile = await verifyNativeGoogleIdToken(req.body.idToken);
+    const { user } = await resolveGoogleUser(profile, {
+        intent: req.body.intent,
+        referralCode: req.body.referralCode || req.body.refCode || req.body.ref || req.body.inviteCode,
+    });
+    const result = await authService.loginWithGoogle(user);
+    sendSuccess(res, result, 'Google sign-in completed.');
+});
+
 // ─── Two-Factor Authentication ────────────────────────────────────────────────
 
 /**
@@ -180,6 +192,7 @@ module.exports = {
     resendVerification,
     googleCallback,
     completeGoogleProfile,
+    nativeGoogleLogin,
     generate2FA,
     enable2FA,
     disable2FA,

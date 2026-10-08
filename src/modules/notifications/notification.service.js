@@ -41,6 +41,19 @@
 const { Notification, NOTIFICATION_TYPE, NOTIFICATION_SCOPE } = require('./notification.model');
 const { User } = require('../users/user.model');
 const { NotFoundError, BusinessRuleError } = require('../../shared/errors/AppError');
+const { dispatchPushForNotification, dispatchBroadcastPush } = require('../../services/pushDelivery.service');
+
+const dispatchUserPushSafely = (notification) => {
+    Promise.resolve(dispatchPushForNotification(notification)).catch((err) => {
+        console.warn('[Notification] user push failed:', err.message);
+    });
+};
+
+const dispatchBroadcastPushSafely = (notification) => {
+    Promise.resolve(dispatchBroadcastPush(notification)).catch((err) => {
+        console.warn('[Notification] broadcast push failed:', err.message);
+    });
+};
 
 // =============================================================================
 // INTERNAL SAFE WRAPPER
@@ -91,7 +104,9 @@ const notifyAdminsAndSupervisors = ({ title, message, type = NOTIFICATION_TYPE.I
             source,
         }));
 
-        return Notification.insertMany(docs, { ordered: false });
+        const notifications = await Notification.insertMany(docs, { ordered: false });
+        notifications.forEach(dispatchUserPushSafely);
+        return notifications;
     });
 };
 
@@ -112,8 +127,8 @@ const notifyAdminsAndSupervisors = ({ title, message, type = NOTIFICATION_TYPE.I
  * @param {string}          [params.source='SYSTEM']
  */
 const notifyUser = ({ userId, title, message, type = NOTIFICATION_TYPE.INFO, link = null, source = 'SYSTEM' }) => {
-    return _safe('notifyUser', () =>
-        Notification.create({
+    return _safe('notifyUser', async () => {
+        const notification = await Notification.create({
             userId,
             title,
             message,
@@ -121,8 +136,10 @@ const notifyUser = ({ userId, title, message, type = NOTIFICATION_TYPE.INFO, lin
             scope: NOTIFICATION_SCOPE.USER,
             link,
             source,
-        })
-    );
+        });
+        dispatchUserPushSafely(notification);
+        return notification;
+    });
 };
 
 /**
@@ -130,8 +147,8 @@ const notifyUser = ({ userId, title, message, type = NOTIFICATION_TYPE.INFO, lin
  * SAFE: catches its own errors.
  */
 const notifyBroadcast = ({ title, message, type = NOTIFICATION_TYPE.INFO, link = null, source = 'ADMIN' }) => {
-    return _safe('notifyBroadcast', () =>
-        Notification.create({
+    return _safe('notifyBroadcast', async () => {
+        const notification = await Notification.create({
             userId: null,
             title,
             message,
@@ -139,8 +156,10 @@ const notifyBroadcast = ({ title, message, type = NOTIFICATION_TYPE.INFO, link =
             scope: NOTIFICATION_SCOPE.BROADCAST,
             link,
             source,
-        })
-    );
+        });
+        dispatchBroadcastPushSafely(notification);
+        return notification;
+    });
 };
 
 /**
@@ -166,7 +185,9 @@ const notifyGroup = (groupId, { title, message, type = NOTIFICATION_TYPE.INFO, l
             source,
         }));
 
-        return Notification.insertMany(docs, { ordered: false });
+        const notifications = await Notification.insertMany(docs, { ordered: false });
+        notifications.forEach(dispatchUserPushSafely);
+        return notifications;
     });
 };
 
@@ -495,6 +516,7 @@ const adminSendNotification = async ({
             link,
             source: 'ADMIN',
         });
+        dispatchBroadcastPushSafely(notification);
         return { sent: 1, mode: 'broadcast', notification };
     }
 
@@ -519,6 +541,7 @@ const adminSendNotification = async ({
         }));
 
         const result = await Notification.insertMany(docs, { ordered: false });
+        result.forEach(dispatchUserPushSafely);
         return { sent: result.length, mode: 'group', groupId };
     }
 
@@ -536,6 +559,7 @@ const adminSendNotification = async ({
             link,
             source: 'ADMIN',
         });
+        dispatchUserPushSafely(notification);
         return { sent: 1, mode: 'user', notification };
     }
 

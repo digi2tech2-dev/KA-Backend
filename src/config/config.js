@@ -48,8 +48,16 @@ const config = {
     google: {
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        // Android Credential Manager verifies ID tokens against the Web/server client.
+        webClientId: process.env.GOOGLE_WEB_CLIENT_ID || process.env.GOOGLE_CLIENT_ID,
         callbackUrl: process.env.GOOGLE_CALLBACK_URL ||
             `http://localhost:${process.env.PORT || 5000}/api/auth/google/callback`,
+    },
+
+    firebase: {
+        projectId: process.env.FIREBASE_PROJECT_ID || '',
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
+        privateKey: String(process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
     },
 
     // ── Email / SMTP ────────────────────────────────────────────────────────────
