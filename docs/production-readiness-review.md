@@ -26,10 +26,10 @@ MONGO_URI=<replica-set-or-atlas-uri>
 JWT_SECRET=<long-random-secret>
 JWT_EXPIRES_IN=7d
 BCRYPT_ROUNDS=12
-FRONTEND_URL=<production-frontend-origin>
-FRONTEND_VERIFY_REDIRECT_URL=<production-frontend-origin>/email-verified
+FRONTEND_URL=https://ad-card.com
+FRONTEND_VERIFY_REDIRECT_URL=https://ad-card.com/email-verified
 APP_URL=<production-backend-origin>
-ALLOWED_ORIGINS=<comma-separated-production-origins>
+ALLOWED_ORIGINS=https://ad-card.com,https://www.ad-card.com,https://ka-cards.com,https://www.ka-cards.com
 GOOGLE_CLIENT_ID=<google-oauth-client-id>
 GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
 GOOGLE_CALLBACK_URL=<production-backend-origin>/api/auth/google/callback
@@ -50,9 +50,9 @@ Frontend production environment:
 ```env
 VITE_DATA_PROVIDER=real
 VITE_API_BASE_URL=<production-backend-origin>/api
-VITE_PUBLIC_APP_URL=<production-frontend-origin>
-VITE_SITE_URL=<production-frontend-origin>
-VITE_PUBLIC_SITE_URL=<production-frontend-origin>
+VITE_PUBLIC_APP_URL=https://ad-card.com
+VITE_SITE_URL=https://ad-card.com
+VITE_PUBLIC_SITE_URL=https://ad-card.com
 VITE_ADMIN_WHATSAPP_NUMBER=<public-support-number>
 ```
 

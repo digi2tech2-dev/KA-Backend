@@ -66,7 +66,7 @@ const config = {
         port: parseInt(process.env.SMTP_PORT || '587', 10),
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
-        from: process.env.EMAIL_FROM || 'noreply@ka.local',
+        from: process.env.EMAIL_FROM || 'noreply@ad-card.local',
         // Base URL for verification links (server-side)
         appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`,
     },

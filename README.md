@@ -515,7 +515,7 @@ Do not commit `.env`. The repository `.gitignore` includes `.env`, and `.env.exa
 | `FRONTEND_URL` | Optional | `http://localhost:3000` | Frontend base for default verification redirect. | Auth/frontend |
 | `FRONTEND_VERIFY_REDIRECT_URL` | Optional | `${FRONTEND_URL}/email-verified` in config, but auth controller fallback is `http://localhost:5173/email-verified` | Email verification redirect target. | Auth/frontend |
 | `APP_URL` | Optional | `http://localhost:${PORT || 5000}` | Backend base URL used in verification links. | Email/auth |
-| `ALLOWED_ORIGINS` | Production-critical | dev/test allow `*`; config fallback `http://localhost:3000` | Comma-separated trusted origins. Required to start in production. | CORS |
+| `ALLOWED_ORIGINS` | Production-critical | dev/test allow `*`; config fallback `http://localhost:3000` | Comma-separated trusted origins. Required to start in production. During the AD CARD cutover include `https://ad-card.com`, `https://www.ad-card.com`, `https://ka-cards.com`, and `https://www.ka-cards.com`. | CORS |
 | `GOOGLE_CLIENT_ID` | Feature-required | none | Enables Google OAuth with secret. | OAuth |
 | `GOOGLE_CLIENT_SECRET` | Feature-required | none | Enables Google OAuth with client ID. | OAuth |
 | `GOOGLE_CALLBACK_URL` | Optional | `http://localhost:${PORT || 5000}/api/auth/google/callback` | OAuth callback registered with Google. | OAuth |
