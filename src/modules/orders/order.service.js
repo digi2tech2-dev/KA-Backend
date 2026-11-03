@@ -1,6 +1,8 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const { COIN_RECHARGE_DYNAMIC_PRODUCT_ID, COIN_RECHARGE_TARGET_FIELD_KEY } = require('../providers/coinRecharge.constants');
+const coinRechargeSvc = require('../providers/coinRecharge.service');
 const crypto = require('crypto');
 const { Product, computeFinalPrice } = require('../products/product.model');
 const { Provider } = require('../providers/provider.model');
@@ -497,7 +499,7 @@ const createOrder = async ({
                 // belongs to for admin review / DLQ.  The adapter is only
                 // obtained when the provider is active.
                 if (providerDoc) {
-                    providerCode = String(providerDoc.slug || providerDoc.name || '')
+                    providerCode = String(providerDoc.adapterType === 'coin-recharge' ? 'coin-recharge' : (providerDoc.slug || providerDoc.name || ''))
                         .toLowerCase().trim() || null;
                 }
 
@@ -565,7 +567,17 @@ const _attemptCreateOrder = async (
         }
 
         // ── 2. Validate Quantity Bounds ────────────────────────────────────────
-        const qty = parseInt(quantity, 10);
+        const linkedProviderProduct = product.providerProduct
+            ? await ProviderProduct.findById(product.providerProduct).select('externalProductId').lean()
+            : null;
+        const isCoinRechargeProduct = linkedProviderProduct?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID;
+        if (isCoinRechargeProduct) providerCode = 'coin-recharge';
+        const quantityText = String(quantity ?? '');
+        if (isCoinRechargeProduct && (!/^\d+$/.test(quantityText) || !Number.isSafeInteger(Number(quantityText)) || Number(quantityText) < 1)) {
+            throw new BusinessRuleError('Coin quantity must be a positive safe integer.', 'INVALID_COIN_RECHARGE_QUANTITY');
+        }
+        const qty = isCoinRechargeProduct ? Number(quantityText) : parseInt(quantity, 10);
+
         if (qty < product.minQty || qty > product.maxQty) {
             throw new BusinessRuleError(
                 `Quantity must be between ${product.minQty} and ${product.maxQty}.`,
@@ -625,6 +637,11 @@ const _attemptCreateOrder = async (
         // proceeds with the cached DB price.  A transient outage should NOT
         // block legitimate orders.
         //
+        if (isCoinRechargeProduct) {
+            const providerDoc = await Provider.findById(product.provider);
+            if (!providerDoc) throw new NotFoundError('Provider');
+            await coinRechargeSvc.verifyTargetForProduct({ provider: providerDoc, quantity: qty, targetUid: customerInput?.values?.[COIN_RECHARGE_TARGET_FIELD_KEY] });
+        }
         if (product.provider && product.providerProduct && provider) {
             try {
                 // Look up the externalProductId from the linked ProviderProduct
@@ -1135,6 +1152,10 @@ const markOrderAsFailed = async (orderId, auditContext = null) => {
             ? await Order.findById(orderId).session(session)
             : await Order.findById(orderId);
         if (!order) throw new NotFoundError('Order');
+        if (order.providerCode === 'coin-recharge' && order.status === ORDER_STATUS.MANUAL_REVIEW) {
+            throw new BusinessRuleError('Resolve coin recharge through its dedicated review workflow.', 'COIN_RECHARGE_MANUAL_REVIEW_REQUIRES_RESOLUTION');
+        }
+
 
         if (order.status === ORDER_STATUS.FAILED) {
             throw new BusinessRuleError(
@@ -1315,6 +1336,10 @@ const processOrderRefund = async (orderId, remains = 0, auditContext = null) => 
             ? await Order.findById(orderId).session(session)
             : await Order.findById(orderId);
         if (!order) throw new NotFoundError('Order');
+        if (order.providerCode === 'coin-recharge' && order.status === ORDER_STATUS.MANUAL_REVIEW) {
+            throw new BusinessRuleError('Resolve coin recharge through its dedicated review workflow.', 'COIN_RECHARGE_MANUAL_REVIEW_REQUIRES_RESOLUTION');
+        }
+
 
         // ── Idempotency guard ────────────────────────────────────────────────
         if (order.refunded === true) {
@@ -1459,6 +1484,10 @@ const processOrderRefund = async (orderId, remains = 0, auditContext = null) => 
 const markOrderAsCompleted = async (orderId, auditContext = null) => {
     const order = await Order.findById(orderId);
     if (!order) throw new NotFoundError('Order');
+        if (order.providerCode === 'coin-recharge' && order.status === ORDER_STATUS.MANUAL_REVIEW) {
+            throw new BusinessRuleError('Resolve coin recharge through its dedicated review workflow.', 'COIN_RECHARGE_MANUAL_REVIEW_REQUIRES_RESOLUTION');
+        }
+
 
     if (order.status !== ORDER_STATUS.PENDING) {
         throw new BusinessRuleError(

@@ -64,7 +64,12 @@ const assertProductionAdapterAllowed = (AdapterClass, provider, { strict = false
 // Keys must be lowercase.  Both slug and display-name variants are registered
 // so the lookup works regardless of whether provider.slug is set.
 //
+const { CoinRechargeAdapter } = require('./coinRecharge.adapter');
+
 const registry = new Map([
+    ['coin-recharge', CoinRechargeAdapter],
+    ['coin recharge', CoinRechargeAdapter],
+    ['coinrecharge', CoinRechargeAdapter],
     ['brand-one-card', BrandOneCardAdapter],
     ['brand one card', BrandOneCardAdapter],
     ['brandonecard', BrandOneCardAdapter],

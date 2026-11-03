@@ -23,6 +23,8 @@
  */
 
 const { Product, PRICING_MODES, MARKUP_TYPES, computeFinalPrice } = require('./product.model');
+const { COIN_RECHARGE_DYNAMIC_PRODUCT_ID } = require('../providers/coinRecharge.constants');
+const { mergeCoinRechargeProductBehavior } = require('../providers/coinRecharge.service');
 const { ProviderProduct } = require('../providers/providerProduct.model');
 const { isPositive, add, normalizeProviderDecimalPrice } = require('../../shared/utils/decimalPrecision');
 const {
@@ -162,7 +164,7 @@ const createProduct = async ({
         resolvedFinalPrice = resolvedBasePrice;
     }
 
-    return Product.create({
+    const productData = {
         name,
         description,
         basePrice: resolvedBasePrice,
@@ -187,7 +189,12 @@ const createProduct = async ({
         provider,
         providerProduct,
         createdBy: adminUserId,
-    });
+    };
+    if (productData.providerProduct) {
+        const linked = await ProviderProduct.findById(productData.providerProduct).select('externalProductId').lean();
+        if (linked?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID) mergeCoinRechargeProductBehavior(productData);
+    }
+    return Product.create(productData);
 };
 
 
@@ -292,7 +299,7 @@ const publishFromProviderProduct = async ({
         resolvedFinalPrice = resolvedBasePrice;
     }
 
-    return Product.create({
+    const productData = {
         name,
         description,
         basePrice: resolvedBasePrice,
@@ -315,7 +322,12 @@ const publishFromProviderProduct = async ({
         provider: pp.provider._id,
         providerProduct: pp._id,
         createdBy: resolvedCreatedBy,
-    });
+    };
+    if (productData.providerProduct) {
+        const linked = await ProviderProduct.findById(productData.providerProduct).select('externalProductId').lean();
+        if (linked?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID) mergeCoinRechargeProductBehavior(productData);
+    }
+    return Product.create(productData);
 };
 
 // =============================================================================
@@ -341,7 +353,7 @@ const publishFromProviderProduct = async ({
  * @returns {Promise<Product>}
  */
 const updateProduct = async (productId, updates) => {
-    const product = await Product.findById(productId).populate('providerProduct', 'rawPrice rawPayload');
+    const product = await Product.findById(productId).populate('providerProduct', 'rawPrice rawPayload externalProductId');
     if (!product) throw new NotFoundError('Product');
 
     const ALLOWED = [
@@ -463,6 +475,9 @@ const updateProduct = async (productId, updates) => {
         safe.syncPriceWithProvider = safe.pricingMode === PRICING_MODES.SYNC;
     }
 
+    const linkedId = safe.providerProduct || product.providerProduct?._id;
+    const linked = linkedId ? await ProviderProduct.findById(linkedId).select('externalProductId').lean() : null;
+    if (linked?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID) mergeCoinRechargeProductBehavior(safe);
     Object.assign(product, safe);
     await product.save();
     return product.populate([

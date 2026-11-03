@@ -391,6 +391,11 @@ const productSchema = new mongoose.Schema(
                         default: true,
                     },
 
+                    verification: {
+                        required: { type: Boolean, default: false },
+                        type: { type: String, default: null },
+                    },
+
                     isVerifiable: {
                         type: Boolean,
                         default: false,

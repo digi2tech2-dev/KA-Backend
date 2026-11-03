@@ -1,5 +1,7 @@
 'use strict';
 
+const { mergeCoinRechargeProductBehavior } = require('./coinRecharge.service');
+const { COIN_RECHARGE_DYNAMIC_PRODUCT_ID } = require('./coinRecharge.constants');
 const { Provider } = require('./provider.model');
 const { ProviderProduct } = require('./providerProduct.model');
 const { Product, PRICING_MODES, EXECUTION_TYPES } = require('../products/product.model');
@@ -169,7 +171,7 @@ const publishProduct = async ({
         ? normalizeProviderDecimalPrice(pp.rawPrice)
         : String(basePrice);
 
-    const product = await Product.create({
+    const productData = {
         name,
         basePrice: resolvedBasePrice,
         minQty: minQty ?? pp.minQty,
@@ -182,7 +184,9 @@ const publishProduct = async ({
         executionType,
         provider: pp.provider._id,
         providerProduct: pp._id,
-    });
+    };
+    if (pp.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID) mergeCoinRechargeProductBehavior(productData);
+    const product = await Product.create(productData);
 
     return product;
 };
@@ -221,6 +225,7 @@ const updatePublishedProduct = async (productId, updates) => {
     }
 
     // Manual mode: allow admin to set basePrice freely (already in safe object)
+    if (product.providerProduct?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID) mergeCoinRechargeProductBehavior(safe);
     Object.assign(product, safe);
     await product.save();
     return product;

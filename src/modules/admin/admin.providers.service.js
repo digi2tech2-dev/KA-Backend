@@ -7,6 +7,7 @@
  * Wraps the provider model with business rules + audit.
  */
 
+const { COIN_RECHARGE_PROVIDER_SLUG } = require('../providers/coinRecharge.constants');
 const { Provider } = require('../providers/provider.model');
 const providerDomainService = require('../providers/provider.service');
 const { getProviderAdapter } = require('../providers/adapters/adapter.factory');
@@ -150,6 +151,9 @@ const getProviderBalance = async (id) => {
 
     const adapter = getProviderAdapter(provider);
     const balance = await adapter.getBalance();
+    if (String(provider.adapterType || provider.slug || '').toLowerCase() === COIN_RECHARGE_PROVIDER_SLUG) {
+        return { provider: provider.name, ...balance };
+    }
     return { provider: provider.name, balance };
 };
 
@@ -308,7 +312,19 @@ const checkProviderOrder = async (id, orderId) => {
     }
 };
 
+const getCoinRechargeHistory = async (id, page = 1) => {
+    const provider = await Provider.findById(id);
+    if (!provider) throw new NotFoundError('Provider');
+    if (String(provider.adapterType || provider.slug || '').trim().toLowerCase() !== COIN_RECHARGE_PROVIDER_SLUG) {
+        throw new BusinessRuleError('Transaction history is unavailable for this provider.', 'HISTORY_UNSUPPORTED');
+    }
+    const adapter = getProviderAdapter(provider, { strict: true });
+    const history = await adapter.getTransactionHistory({ page: Number(page) || 1 });
+    return { provider: provider.name, evidenceOnly: true, ...history };
+};
+
 module.exports = {
+    getCoinRechargeHistory,
     listProviders,
     getProviderById,
     createProvider,

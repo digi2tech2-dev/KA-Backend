@@ -82,4 +82,13 @@ const updateStatus = catchAsync(async (req, res) => {
     sendSuccess(res, { order }, `Order status updated to ${order.status}.`);
 });
 
-module.exports = { listOrders, getOrderById, retryOrder, refundOrder, syncOrderProviderStatus, completeOrder, updateStatus };
+const resolveCoinRechargeManualReview = catchAsync(async (req, res) => {
+    const order = await svc.resolveCoinRechargeManualReview(req.params.id, req.user._id, {
+        resolution: req.body.resolution,
+        reason: req.body.reason,
+        auditContext: resolveAuditContext(req),
+    });
+    sendSuccess(res, { order }, 'Coin recharge manual review resolved');
+});
+
+module.exports = { listOrders, getOrderById, retryOrder, refundOrder, syncOrderProviderStatus, completeOrder, resolveCoinRechargeManualReview, updateStatus };

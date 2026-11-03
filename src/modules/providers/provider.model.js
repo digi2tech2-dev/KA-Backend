@@ -100,6 +100,17 @@ const providerSchema = new mongoose.Schema(
             default: [],
         },
 
+        coinRechargeConfig: {
+            product: {
+                externalProductId: { type: String, trim: true, default: 'coin-recharge-dynamic' },
+                name: { type: String, trim: true, default: 'Dynamic Coin Recharge', maxlength: 200 },
+                unitPrice: { type: String, default: null, get: (v) => v != null ? String(v) : null, set: (v) => v != null && v !== '' ? String(v) : null },
+                minCoins: { type: Number, default: null, validate: { validator: (v) => v == null || (Number.isSafeInteger(v) && v > 0), message: 'coinRecharge minCoins must be a positive safe integer' } },
+                maxCoins: { type: Number, default: null, validate: { validator: function (v) { const min = this?.coinRechargeConfig?.product?.minCoins; return v == null || (Number.isSafeInteger(v) && v > 0 && (min == null || v >= min)); }, message: 'coinRecharge maxCoins must be a positive safe integer >= minCoins' } },
+                isActive: { type: Boolean, default: false },
+            },
+        },
+
         /** Soft-delete timestamp. Null = not deleted. */
         deletedAt: {
             type: Date,

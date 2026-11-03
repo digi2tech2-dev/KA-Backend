@@ -20,6 +20,8 @@
  */
 
 const mongoose = require('mongoose');
+const { COIN_RECHARGE_PROVIDER_SLUG } = require('../providers/coinRecharge.constants');
+const isCoinRechargeOrder = (order) => String(order?.providerCode || '').toLowerCase() === COIN_RECHARGE_PROVIDER_SLUG;
 const { Order, ORDER_STATUS, MAX_RETRY_COUNT, ORDER_EXECUTION_TYPES } = require('../orders/order.model');
 const { getExternalProductId } = require('../products/product.service');
 const { refundWalletAtomic } = require('../wallet/wallet.service');
@@ -66,8 +68,9 @@ const refundFailedOrder = async (order) => {
     }
 
     // Execute the wallet refund inside its own session
-    const session = await mongoose.startSession();
+    let session;
     try {
+        session = await mongoose.startSession();
         session.startTransaction({
             readConcern: { level: 'snapshot' },
             writeConcern: { w: 'majority' },
@@ -153,16 +156,16 @@ const refundFailedOrder = async (order) => {
         return true;
 
     } catch (err) {
-        if (session.inTransaction()) await session.abortTransaction();
+        if (session?.inTransaction()) await session.abortTransaction();
         // Undo the refunded=true flag so the next retry can attempt again
         await Order.findByIdAndUpdate(order._id, { $set: { refunded: false, refundedAt: null } });
         throw err;
     } finally {
-        try { session.endSession(); } catch (_) { /* already ended */ }
+        try { session?.endSession(); } catch (_) { /* already ended */ }
     }
 };
 const { getProviderAdapter } = require('../providers/adapters/adapter.factory');
-const Provider = require('../providers/provider.model');
+const { Provider } = require('../providers/provider.model');
 const { Product } = require('../products/product.model');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +194,7 @@ const { Product } = require('../products/product.model');
  * @returns {Promise<{ order: Order, placed: boolean, refunded: boolean }>}
  */
 const executeOrder = async (orderId, provider = null, auditContext = null) => {
+    let nonIdempotentSaleAttempted = false;
     // ─── TOP-LEVEL CRASH GUARD ─────────────────────────────────────────────
     // Wraps the entire function so ANY crash (parsing, DB, provider resolution)
     // marks the order FAILED + refund instead of leaving it stuck in PROCESSING.
@@ -208,6 +212,9 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
         return { order, placed: false, refunded: false };
     }
 
+    if (isCoinRechargeOrder(order) && order.providerSaleAttemptedAt) {
+        return { order, placed: false, refunded: false };
+    }
     const actorId = auditContext?.actorId ?? order.userId;
     const actorRole = auditContext?.actorRole ?? ACTOR_ROLES.SYSTEM;
     const ipAddress = auditContext?.ipAddress ?? null;
@@ -285,8 +292,18 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
     // ── Call the provider ──────────────────────────────────────────────────────
     console.log(`[Fulfillment] Placing order ${orderId} with provider…`);
 
+    if (isCoinRechargeOrder(order)) {
+        // Persist the claim before any supplier call. A crash cannot cause a replay.
+        const claimed = await Order.findOneAndUpdate(
+            { _id: orderId, status: ORDER_STATUS.PROCESSING, providerSaleAttemptedAt: null },
+            { $set: { providerSaleAttemptedAt: new Date() } },
+            { new: true }
+        );
+        if (!claimed) return { order: await Order.findById(orderId), placed: false, refunded: false };
+    }
     let result;
     try {
+        nonIdempotentSaleAttempted = isCoinRechargeOrder(order);
         result = await resolvedProvider.placeOrder({
             providerProductId: externalProductId ?? String(order.productId._id),
             externalProductId: externalProductId ?? String(order.productId._id),
@@ -297,6 +314,10 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
             ...mappedCustomerFields,   // ← spread translated customer fields onto params
         });
     } catch (err) {
+        if (isCoinRechargeOrder(order)) {
+            result = { success: false, providerStatus: 'Unknown', outcomeUncertain: true,
+                errorCode: err?.code || 'COIN_RECHARGE_PLACE_ORDER_THROWN', rawResponse: { errorCode: err?.code || 'COIN_RECHARGE_PLACE_ORDER_THROWN' } };
+        } else {
         // Classify the error: transient (network/timeout) vs hard rejection.
         //
         // TRANSIENT → keep PROCESSING so the cron can retry later.
@@ -333,8 +354,24 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
                 errorMessage: err.message,
             };
         }
+        }
     }
 
+    if (isCoinRechargeOrder(order)) {
+        nonIdempotentSaleAttempted = result?.definitePreSendFailure !== true;
+        const confirmed = result?.success === true && String(result?.providerStatus || '').toLowerCase() === 'completed';
+        if (nonIdempotentSaleAttempted && !confirmed) {
+            await Order.findByIdAndUpdate(orderId, { $set: {
+                status: ORDER_STATUS.MANUAL_REVIEW, providerStatus: 'Unknown',
+                providerOutcome: 'uncertain', providerErrorCode: result?.errorCode || 'COIN_RECHARGE_AMBIGUOUS_SALE',
+                providerRawResponse: result?.rawResponse || null, lastCheckedAt: new Date(),
+            } });
+            createAuditLog({ actorId, actorRole, ipAddress, userAgent, action: PROVIDER_ACTIONS.ORDER_PLACE_FAILED,
+                entityType: ENTITY_TYPES.ORDER, entityId: orderId,
+                metadata: { providerCode: order.providerCode, outcome: 'uncertain', reason: result?.errorCode } });
+            return { order: await Order.findById(orderId), placed: false, refunded: false, manualReview: true };
+        }
+    }
     console.log(`[Fulfillment] Provider response for order ${orderId}:`, JSON.stringify(result));
 
     // ── Interpret result ───────────────────────────────────────────────────────
@@ -528,6 +565,13 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
 
     // ─── END OF TOP-LEVEL CRASH GUARD ──────────────────────────────────────
     } catch (fatalErr) {
+        if (nonIdempotentSaleAttempted) {
+            await Order.findByIdAndUpdate(orderId, { $set: {
+                status: ORDER_STATUS.MANUAL_REVIEW, providerOutcome: 'uncertain',
+                providerErrorCode: 'COIN_RECHARGE_POST_SALE_LOCAL_FAILURE', lastCheckedAt: new Date(),
+            } }).catch(() => null);
+            return { order: await Order.findById(orderId).catch(() => null), placed: false, refunded: false, manualReview: true };
+        }
         // Something completely unexpected crashed — mark FAILED + refund
         console.error(`[Fulfillment] FATAL crash in executeOrder for ${orderId}:`, fatalErr);
 
@@ -569,6 +613,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
  * @returns {Promise<{ action: 'completed'|'failed'|'pending'|'skipped' }>}
  */
 const processOrderStatusResult = async (order, statusResult) => {
+    if (isCoinRechargeOrder(order)) return { order, refunded: false, manualReview: order.status === ORDER_STATUS.MANUAL_REVIEW };
     if (order.status !== ORDER_STATUS.PROCESSING) {
         return { action: 'skipped' };
     }
@@ -888,7 +933,13 @@ const pollProcessingOrders = async (providerOverride = null) => {
     const stats = { checked: 0, completed: 0, failed: 0, pending: 0, manualReview: 0, errors: [] };
 
     // ── 1. Fetch ordinary provider IDs plus uncertain placement attempts ─────
+    const abandoned = await Order.updateMany({
+        providerCode: COIN_RECHARGE_PROVIDER_SLUG, status: ORDER_STATUS.PROCESSING,
+        providerSaleAttemptedAt: { $lte: new Date(Date.now() - 2 * 60 * 1000), $ne: null },
+    }, { $set: { status: ORDER_STATUS.MANUAL_REVIEW, providerOutcome: 'uncertain', providerErrorCode: 'COIN_RECHARGE_INTERRUPTED_SALE' } });
+    stats.manualReview += abandoned.modifiedCount || 0;
     const processingOrders = await Order.find({
+        providerCode: { $ne: COIN_RECHARGE_PROVIDER_SLUG },
         status: ORDER_STATUS.PROCESSING,
         executionType: ORDER_EXECUTION_TYPES.AUTOMATIC,
         $or: [

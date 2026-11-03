@@ -5,6 +5,8 @@
  */
 
 const svc = require('./admin.providers.service');
+const coinRechargeSvc = require('../providers/coinRecharge.service');
+const auditContext = (req) => req.auditContext || ({ actorId: req.user?._id, actorRole: req.user?.role, ipAddress: req.ip, userAgent: req.get('User-Agent') });
 const catchAsync = require('../../shared/utils/catchAsync');
 const { sendSuccess, sendCreated, sendPaginated } = require('../../shared/utils/apiResponse');
 
@@ -76,7 +78,19 @@ const checkProviderOrder = catchAsync(async (req, res) => {
     sendSuccess(res, data, 'Order status retrieved');
 });
 
+const updateCoinRechargeProductConfig = catchAsync(async (req, res) => {
+    const data = await coinRechargeSvc.updateProductConfig(req.params.id, req.body, auditContext(req));
+    sendSuccess(res, { product: data }, 'Coin recharge product configuration updated');
+});
+
+const getCoinRechargeHistory = catchAsync(async (req, res) => {
+    const data = await svc.getCoinRechargeHistory(req.params.id, req.query.page);
+    sendSuccess(res, data, 'Coin recharge transaction history retrieved for manual evidence only');
+});
+
 module.exports = {
+    updateCoinRechargeProductConfig,
+    getCoinRechargeHistory,
     listProviders,
     getProviderById,
     createProvider,

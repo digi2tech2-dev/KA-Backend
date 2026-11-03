@@ -666,4 +666,10 @@ router.post('/notifications/send', adminOnly, notifValidation.validateBody(notif
     sendSuccess(res, result, `Notification sent successfully (${result.mode}, ${result.sent} recipient(s)).`);
 }));
 
+router.patch('/providers/:id/coin-recharge/product-config', requirePermission('MANAGE_SUPPLIERS'), validateBody(schemas.coinRechargeProductConfig), providersCtrl.updateCoinRechargeProductConfig);
+
+router.get('/providers/:id/coin-recharge/history', requirePermission('MANAGE_SUPPLIERS'), providersCtrl.getCoinRechargeHistory);
+
+router.post('/orders/:id/coin-recharge/resolve', requirePermission('CONFIRM_ORDERS'), validateBody(schemas.coinRechargeResolution), ordersCtrl.resolveCoinRechargeManualReview);
+
 module.exports = router;

@@ -281,6 +281,10 @@ const orderSchema = new mongoose.Schema(
         },
 
         /** Complete raw JSON body returned by the last provider API call. */
+        // Durable one-shot claim: never clear or reuse for non-idempotent sales.
+        providerSaleAttemptedAt: { type: Date, default: null },
+        providerOutcome: { type: String, default: null },
+        providerErrorCode: { type: String, default: null },
         providerRawResponse: {
             type: mongoose.Schema.Types.Mixed,
             default: null,

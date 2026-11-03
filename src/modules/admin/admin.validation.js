@@ -489,6 +489,19 @@ const debtAdjustmentSchema = Joi.object({
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
+const coinRechargeProductConfigSchema = Joi.object({
+    name: Joi.string().trim().min(2).max(200).required(),
+    unitPrice: Joi.alternatives().try(Joi.string().trim(), Joi.number()).required(),
+    minCoins: Joi.number().integer().positive().max(Number.MAX_SAFE_INTEGER).required(),
+    maxCoins: Joi.number().integer().positive().max(Number.MAX_SAFE_INTEGER).min(Joi.ref('minCoins')).required(),
+    isActive: Joi.boolean().required(),
+});
+
+const coinRechargeResolutionSchema = Joi.object({
+    resolution: Joi.string().valid('delivered', 'refund').required(),
+    reason: Joi.string().trim().min(3).max(500).required(),
+});
+
 module.exports = {
     validateBody,
     validateQuery,
@@ -515,6 +528,8 @@ module.exports = {
         // Providers
         createProvider: createProviderSchema,
         updateProvider: updateProviderSchema,
+        coinRechargeProductConfig: coinRechargeProductConfigSchema,
+        coinRechargeResolution: coinRechargeResolutionSchema,
         // Products
         createAdminProduct: createAdminProductSchema,
         updateAdminProduct: updateAdminProductSchema,
