@@ -121,7 +121,7 @@ const createDepositRequest = async ({
     auditContext = null,
 }) => {
     // Confirm user exists (belt-and-suspenders — middleware already checks ACTIVE)
-    const user = await User.findById(userId).select('_id role name email');
+    const user = await User.findById(userId).select('_id role name email currency walletBalance');
     if (!user) throw new NotFoundError('User');
 
     const normalizedTransactionId = transactionId ? String(transactionId).trim() : null;
@@ -208,7 +208,7 @@ const createDepositRequest = async ({
 
     try {
         whatsappService.sendAdminNotification(
-            `💰 *طلب شحن رصيد!*\nالمستخدم: ${user.name || user.email || userId}\nالمبلغ: ${deposit.requestedAmount} ${deposit.currency}\nوسيلة الدفع: ${paymentMethodId}`
+            `💰 *طلب إضافة رصيد جديد!*\nالمستخدم: ${user.name || user.email || userId}\nمعرّف العميل: ${userId}\nالبريد: ${user.email || 'غير متاح'}\nرقم الطلب: ${deposit._id}\nالمبلغ: ${deposit.requestedAmount} ${deposit.currency}\nرصيد المحفظة وقت الطلب: ${user.walletBalance ?? 'غير متاح'} ${user.currency || ''}\nوسيلة الدفع: ${paymentMethodId}`
         ).catch((err) => {
             console.error('WhatsApp Notification failed:', err.message);
         });
@@ -253,6 +253,7 @@ const approveDeposit = async (depositId, adminId, adminOverrides = {}, auditCont
     let finalCurrency;
     let walletCurrency;
     let walletCreditAmount;
+    let creditTransaction;
     let conversionNote;
     let commissionOutcome = null;
 
@@ -352,14 +353,14 @@ const approveDeposit = async (depositId, adminId, adminOverrides = {}, auditCont
     await runTestHook(testHooks.beforeWalletUpdate, { deposit: updated });
 
     // Credit the wallet
-    await creditWalletDirect({
+    ({ transaction: creditTransaction } = await creditWalletDirect({
         userId: updated.userId,
         amount: walletCreditAmount,
         reference: updated._id,
         description: `Deposit #${updated._id.toString().slice(-6)} (${finalAmount} ${finalCurrency})`,
         session,
         testHooks: testHooks.wallet,
-    });
+    }));
 
     await runTestHook(testHooks.afterWalletCreditBeforeCommission, { deposit: updated });
 
@@ -427,7 +428,8 @@ const approveDeposit = async (depositId, adminId, adminOverrides = {}, auditCont
 
     const notificationFn = testHooks.notifyDepositApproved || notifyDepositApproved;
     try {
-        Promise.resolve(notificationFn(populated)).catch((err) => {
+        Promise.resolve(notificationFn(populated, { creditedAmount: walletCreditAmount, walletCurrency,
+            balanceAfter: creditTransaction?.balanceAfter })).catch((err) => {
             console.error('Deposit approval notification failed:', err.message);
         });
     } catch (err) {

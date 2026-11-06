@@ -260,6 +260,8 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
                 console.error(`[Fulfillment] Refund FAILED for order ${orderId}:`, refundErr.message);
             }
 
+            notifyOrderFailed(await Order.findById(orderId).catch(() => null));
+
             return { order: await Order.findById(orderId), placed: false, refunded: refundIssued };
         }
     }
@@ -550,6 +552,8 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
             console.error(`[Fulfillment] Cleanup also failed for ${orderId}:`, cleanupErr.message);
         }
 
+        notifyOrderFailed(await Order.findById(orderId).catch(() => null));
+
         return { order: await Order.findById(orderId).catch(() => null), placed: false, refunded: false };
     }
 };
@@ -619,6 +623,8 @@ const processOrderStatusResult = async (order, statusResult) => {
             await refundFailedOrder(freshOrder).catch((e) =>
                 console.error(`[Fulfillment] Refund error (retry limit) for ${order._id}:`, e.message)
             );
+
+            notifyOrderFailed(await Order.findById(order._id).catch(() => null));
 
             return { action: 'failed' };
         }
@@ -719,6 +725,7 @@ const processOrderStatusResult = async (order, statusResult) => {
             });
         } catch (e) {
             console.error(`[Fulfillment] Partial refund error for ${order._id}:`, e.message);
+            notifyOrderFailed(await Order.findById(order._id).catch(() => null));
         }
 
         return { action: 'failed' };
@@ -767,6 +774,7 @@ const processOrderStatusResult = async (order, statusResult) => {
             });
         } catch (e) {
             console.error(`[Fulfillment] Full refund error for ${order._id}:`, e.message);
+            notifyOrderFailed(await Order.findById(order._id).catch(() => null));
         }
 
         return { action: 'failed' };
@@ -809,6 +817,8 @@ const processOrderStatusResult = async (order, statusResult) => {
     await refundFailedOrder(freshOrder).catch((e) =>
         console.error(`[Fulfillment] Refund error (failed) for ${order._id}:`, e.message)
     );
+
+    notifyOrderFailed(await Order.findById(order._id).catch(() => null));
 
     return { action: 'failed' };
 };

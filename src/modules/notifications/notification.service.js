@@ -42,6 +42,9 @@ const { Notification, NOTIFICATION_TYPE, NOTIFICATION_SCOPE } = require('./notif
 const { User } = require('../users/user.model');
 const { NotFoundError, BusinessRuleError } = require('../../shared/errors/AppError');
 const { dispatchPushForNotification, dispatchBroadcastPush } = require('../../services/pushDelivery.service');
+const whatsappService = require('../whatsapp/whatsapp.service');
+const { WalletTransaction } = require('../wallet/walletTransaction.model');
+const { Product } = require('../products/product.model');
 
 const dispatchUserPushSafely = (notification) => {
     Promise.resolve(dispatchPushForNotification(notification)).catch((err) => {
@@ -79,6 +82,33 @@ const _safe = (label, fn) => {
         return null;
     }
 };
+
+// Admin WhatsApp messages are best-effort and never affect financial commits.
+const notifyAdminEvent = (event, record, details = {}) => _safe('admin WhatsApp', async () => {
+    if (!record) return;
+    const userId = record.userId?._id || record.userId;
+    const user = userId ? await User.findById(userId).select('name email currency walletBalance').lean() : null;
+    const lines = [`*${event}*`, `العميل: ${user?.name || record.userId?.name || 'غير متاح'}`,
+        `معرّف العميل: ${userId || 'غير متاح'}`];
+    if (user?.email) lines.push(`البريد: ${user.email}`);
+    if (record.orderNumber || record._id) lines.push(`رقم العملية: ${record.orderNumber || record._id}`);
+    if (record.productId) {
+        const product = await Product.findById(record.productId?._id || record.productId).select('name').lean();
+        if (product?.name) lines.push(`المنتج: ${typeof product.name === 'string' ? product.name : product.name.ar || product.name.en || ''}`);
+    }
+    if (record.appNameSnapshot) lines.push(`التطبيق: ${record.appNameSnapshot}`);
+    if (record.quantity != null) lines.push(`الكمية: ${record.quantity}`);
+    if (record.coinAmount != null) lines.push(`عدد العملات: ${record.coinAmount}`);
+    if (record.requestedAmount != null) lines.push(`مبلغ التحويل: ${record.requestedAmount} ${record.currency || ''}`);
+    else if (record.chargedAmount != null) lines.push(`مبلغ الطلب: ${record.chargedAmount} ${record.currency || ''}`);
+    else if (record.totalPrice != null) lines.push(`المبلغ: ${record.totalPrice} ${record.currency || ''}`);
+    if (details.creditedAmount != null) lines.push(`المبلغ المضاف للمحفظة: ${details.creditedAmount} ${details.walletCurrency || ''}`);
+    if (details.balanceAfter != null) lines.push(`الرصيد بعد العملية: ${details.balanceAfter} ${details.walletCurrency || ''}`);
+    else if (user?.walletBalance != null) lines.push(`الرصيد الحالي وقت الإشعار: ${user.walletBalance} ${user.currency || ''}`);
+    if (details.refundAmount != null) lines.push(`المبلغ المسترد: ${details.refundAmount} ${record.currency || ''}`);
+    if (details.reason) lines.push(`السبب: ${details.reason}`);
+    await whatsappService.sendAdminNotification(lines.join('\n'));
+});
 
 /**
  * Send a notification to all admin-review actors.
@@ -202,8 +232,8 @@ const notifyGroup = (groupId, { title, message, type = NOTIFICATION_TYPE.INFO, l
 const notifyAccountApproved = (userId) => {
     return notifyUser({
         userId,
-        title: 'Account Approved ✅',
-        message: 'Your account has been approved! You can now access all platform features.',
+        title: 'تم تفعيل الحساب ✅',
+        message: 'تم تفعيل حسابك بنجاح، ويمكنك الآن استخدام خدمات المنصة.',
         type: NOTIFICATION_TYPE.SUCCESS,
         source: 'ACCOUNT',
     });
@@ -213,11 +243,12 @@ const notifyAccountApproved = (userId) => {
  * Notify user that their deposit has been approved.
  * @param {Object} deposit - DepositRequest document
  */
-const notifyDepositApproved = (deposit) => {
+const notifyDepositApproved = (deposit, details = {}) => {
+    notifyAdminEvent('تم قبول طلب إضافة الرصيد ✅', deposit, details);
     return notifyUser({
         userId: deposit.userId?._id ?? deposit.userId,
-        title: 'Deposit Approved ✅',
-        message: `Your deposit of ${deposit.requestedAmount} ${deposit.currency || 'USD'} has been approved and credited to your wallet.`,
+        title: 'تم قبول إضافة الرصيد ✅',
+        message: `تم قبول تحويلك بقيمة ${deposit.requestedAmount} ${deposit.currency || ''} وإضافة ${details.creditedAmount ?? deposit.requestedAmount} ${details.walletCurrency || deposit.currency || ''} إلى محفظتك.${details.balanceAfter != null ? ` رصيدك بعد الإضافة: ${details.balanceAfter} ${details.walletCurrency || ''}.` : ''}`,
         type: NOTIFICATION_TYPE.SUCCESS,
         source: 'DEPOSIT',
     });
@@ -229,11 +260,11 @@ const notifyDepositApproved = (deposit) => {
  */
 const notifyNewDeposit = (deposit) => {
     const amount = `${deposit.requestedAmount} ${deposit.currency || 'USD'}`;
-    const customer = deposit.userId?.name || deposit.userNameSnapshot || 'A customer';
+    const customer = deposit.userId?.name || deposit.userNameSnapshot || 'أحد العملاء';
 
     return notifyAdminsAndSupervisors({
-        title: 'New Deposit Request',
-        message: `${customer} submitted a deposit request for ${amount}.`,
+        title: 'طلب إضافة رصيد جديد',
+        message: `قدّم ${customer} طلب إضافة رصيد بقيمة ${amount}.`,
         type: NOTIFICATION_TYPE.WARNING,
         link: '/admin/payments',
         source: 'DEPOSIT',
@@ -246,14 +277,24 @@ const notifyNewDeposit = (deposit) => {
  * @param {string|null} [adminNotes]
  */
 const notifyDepositRejected = (deposit, adminNotes = null) => {
-    const reason = adminNotes ? ` Reason: ${adminNotes}` : '';
+    notifyAdminEvent('تم رفض طلب إضافة الرصيد ❌', deposit, { reason: adminNotes });
+    const reason = adminNotes ? ` السبب: ${adminNotes}` : '';
     return notifyUser({
         userId: deposit.userId?._id ?? deposit.userId,
-        title: 'Deposit Rejected ❌',
-        message: `Your deposit of ${deposit.requestedAmount} ${deposit.currency || 'USD'} has been rejected.${reason}`,
+        title: 'تم رفض إضافة الرصيد ❌',
+        message: `تم رفض طلب إضافة الرصيد بقيمة ${deposit.requestedAmount} ${deposit.currency || ''}.${reason}`,
         type: NOTIFICATION_TYPE.ERROR,
         source: 'DEPOSIT',
     });
+};
+
+const notifyManualWalletCredit = (transaction, currency) => {
+    if (!transaction) return null;
+    const details = { creditedAmount: transaction.amount, balanceAfter: transaction.balanceAfter, walletCurrency: currency };
+    notifyAdminEvent('تمت إضافة رصيد للعميل ✅', transaction, details);
+    return notifyUser({ userId: transaction.userId, title: 'تمت إضافة رصيد لمحفظتك ✅',
+        message: `تمت إضافة ${transaction.amount} ${currency || ''} إلى محفظتك. رصيدك بعد الإضافة: ${transaction.balanceAfter} ${currency || ''}.`,
+        type: NOTIFICATION_TYPE.SUCCESS, source: 'DEPOSIT' });
 };
 
 /**
@@ -261,10 +302,11 @@ const notifyDepositRejected = (deposit, adminNotes = null) => {
  * @param {Object} order - TargetOrder document
  */
 const notifyTargetApproved = (order) => {
+    notifyAdminEvent('تم قبول طلب التارجت ✅', order);
     return notifyUser({
         userId: order.userId?._id ?? order.userId,
-        title: 'Target Order Approved ✅',
-        message: `Your target coin purchase of ${order.coinAmount} coins has been approved.`,
+        title: 'تم قبول طلب التارجت ✅',
+        message: `تم قبول طلب التارجت الخاص بك لعدد ${order.coinAmount} عملة.`,
         type: NOTIFICATION_TYPE.SUCCESS,
         source: 'TARGET',
     });
@@ -276,11 +318,12 @@ const notifyTargetApproved = (order) => {
  * @param {string|null} [adminNotes]
  */
 const notifyTargetRejected = (order, adminNotes = null) => {
-    const reason = adminNotes ? ` Reason: ${adminNotes}` : '';
+    notifyAdminEvent('تم رفض طلب التارجت ❌', order, { reason: adminNotes });
+    const reason = adminNotes ? ` السبب: ${adminNotes}` : '';
     return notifyUser({
         userId: order.userId?._id ?? order.userId,
-        title: 'Target Order Rejected ❌',
-        message: `Your target coin purchase of ${order.coinAmount} coins has been rejected.${reason}`,
+        title: 'تم رفض طلب التارجت ❌',
+        message: `تم رفض طلب التارجت الخاص بك لعدد ${order.coinAmount} عملة.${reason}`,
         type: NOTIFICATION_TYPE.ERROR,
         source: 'TARGET',
     });
@@ -291,13 +334,13 @@ const notifyTargetRejected = (order, adminNotes = null) => {
  * @param {Object} order - TargetOrder document
  */
 const notifyNewTargetOrder = (order) => {
-    const customer = order.userId?.name || order.userNameSnapshot || 'A customer';
-    const appName = order.appNameSnapshot || order.appId?.name || 'Target app';
-    const amount = order.coinAmount ?? 'requested';
+    const customer = order.userId?.name || order.userNameSnapshot || 'أحد العملاء';
+    const appName = order.appNameSnapshot || order.appId?.name || 'تطبيق التارجت';
+    const amount = order.coinAmount ?? 'المطلوبة';
 
     return notifyAdminsAndSupervisors({
-        title: 'New Target Order',
-        message: `${customer} submitted a target order for ${amount} coins on ${appName}.`,
+        title: 'طلب تارجت جديد',
+        message: `قدّم ${customer} طلب تارجت لعدد ${amount} عملة على ${appName}.`,
         type: NOTIFICATION_TYPE.WARNING,
         link: '/admin/target-requests',
         source: 'TARGET',
@@ -309,11 +352,13 @@ const notifyNewTargetOrder = (order) => {
  * @param {Object} order - Order document
  */
 const notifyOrderCompleted = (order) => {
+    if (!order) return null;
+    notifyAdminEvent('اكتمل شحن الطلب ✅', order);
     const label = order.orderNumber ? `#${order.orderNumber}` : '';
     return notifyUser({
         userId: order.userId?._id ?? order.userId,
-        title: 'Order Completed ✅',
-        message: `Your order ${label} has been completed successfully.`,
+        title: 'اكتمل شحن الطلب ✅',
+        message: `تم شحن طلبك ${label} بنجاح.`,
         type: NOTIFICATION_TYPE.SUCCESS,
         source: 'ORDER',
     });
@@ -323,16 +368,17 @@ const notifyOrderCompleted = (order) => {
  * Notify user that their product order failed (with refund).
  * @param {Object} order - Order document
  */
-const notifyOrderFailed = (order) => {
+const notifyOrderFailed = (order) => _safe('notifyOrderFailed', async () => {
+    if (!order) return null;
     const label = order.orderNumber ? `#${order.orderNumber}` : '';
-    return notifyUser({
-        userId: order.userId?._id ?? order.userId,
-        title: 'Order Failed',
-        message: `Your order ${label} has failed. A refund has been issued to your wallet.`,
-        type: NOTIFICATION_TYPE.WARNING,
-        source: 'ORDER',
-    });
-};
+    const refund = await WalletTransaction.findOne({ userId: order.userId?._id ?? order.userId, reference: order._id, type: 'REFUND', status: 'COMPLETED' }).sort({ createdAt: -1 }).lean();
+    const partial = order.status === 'PARTIAL';
+    const title = partial ? 'اكتمل شحن الطلب جزئيًا' : 'تعذر شحن الطلب ❌';
+    notifyAdminEvent(title, order, { refundAmount: refund?.amount, balanceAfter: refund?.balanceAfter, walletCurrency: order.currency });
+    return notifyUser({ userId: order.userId?._id ?? order.userId, title,
+        message: `${partial ? 'اكتمل شحن طلبك جزئيًا' : 'تعذر شحن طلبك'} ${label}.${refund ? ` تم تسجيل استرداد ${refund.amount} ${order.currency || ''} في محفظتك.` : ' يرجى مراجعة حالة الاسترداد أو التواصل مع الدعم.'}`,
+        type: NOTIFICATION_TYPE.WARNING, source: 'ORDER' });
+});
 
 /**
  * Notify admins/supervisors that a manual product order requires fulfillment.
@@ -340,12 +386,12 @@ const notifyOrderFailed = (order) => {
  */
 const notifyNewManualOrder = (order) => {
     const label = order.orderNumber ? `#${order.orderNumber}` : '';
-    const customer = order.userId?.name || order.userNameSnapshot || 'A customer';
-    const productName = order.productId?.name || order.productNameSnapshot || 'Manual product';
+    const customer = order.userId?.name || order.userNameSnapshot || 'أحد العملاء';
+    const productName = order.productId?.name || order.productNameSnapshot || 'منتج يدوي';
 
     return notifyAdminsAndSupervisors({
-        title: 'New Manual Order',
-        message: `${customer} placed manual order ${label} for ${productName}.`,
+        title: 'طلب يدوي جديد',
+        message: `قدّم ${customer} الطلب اليدوي ${label} لمنتج ${productName}.`,
         type: NOTIFICATION_TYPE.WARNING,
         link: '/admin/orders',
         source: 'ORDER',
@@ -580,6 +626,7 @@ module.exports = {
     notifyNewDeposit,
     notifyDepositApproved,
     notifyDepositRejected,
+    notifyManualWalletCredit,
     notifyNewTargetOrder,
     notifyTargetApproved,
     notifyTargetRejected,

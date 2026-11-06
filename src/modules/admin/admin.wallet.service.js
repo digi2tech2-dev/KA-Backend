@@ -16,6 +16,7 @@ const { NotFoundError, BusinessRuleError } = require('../../shared/errors/AppErr
 const { createAuditLog } = require('../audit/audit.service');
 const { ADMIN_ACTIONS, ENTITY_TYPES, ACTOR_ROLES } = require('../audit/audit.constants');
 const { buildPublicWalletSummary } = require('../../shared/utils/walletSummary');
+const { notifyManualWalletCredit } = require('../notifications/notification.service');
 
 const MAX_ADJUSTMENT = 100_000;  // guard against fat-finger typos
 
@@ -170,6 +171,7 @@ const addFunds = async (userId, amount, reason, adminId) => {
         },
     });
 
+    notifyManualWalletCredit(transaction, userCurrency);
     return { transaction };
 };
 
