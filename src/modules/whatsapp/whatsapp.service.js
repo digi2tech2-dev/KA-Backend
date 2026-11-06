@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const qrcode = require('qrcode');
 const config = require('../../config/config');
+const { Setting } = require('../admin/setting.model');
 
 let Client = null;
 let LocalAuth = null;
@@ -52,21 +53,21 @@ const setLastError = (err) => {
         : null;
 };
 
-const normalizeAdminChatId = () => {
-    const rawNumber = String(process.env.ADMIN_NOTIFICATION_NUMBER || '').trim();
+const normalizeAdminChatId = (configuredNumber = process.env.ADMIN_NOTIFICATION_NUMBER) => {
+    const rawNumber = String(configuredNumber || '').trim();
     if (!rawNumber) return null;
 
     const normalized = rawNumber.replace(/[^\d]/g, '');
     return normalized ? `${normalized}@c.us` : null;
 };
 
-const getStatus = () => ({
+const getStatus = (options = {}) => ({
     state: currentState,
     qrCode: currentState === WHATSAPP_STATE.QR_READY ? currentQrCode : null,
     hasQrCode: Boolean(currentState === WHATSAPP_STATE.QR_READY && currentQrCode),
     isConnected: currentState === WHATSAPP_STATE.CONNECTED,
     isInitializing,
-    adminNumberConfigured: Boolean(normalizeAdminChatId()),
+    adminNumberConfigured: Boolean(normalizeAdminChatId(options.adminNotificationNumber)),
     dependencyAvailable: Boolean(Client && LocalAuth),
     lastError,
 });
@@ -242,13 +243,32 @@ const resetWhatsAppClient = async () => {
     return initializeWhatsAppClient({ force: true });
 };
 
+const normalizeRecipientChatId = (phone) => {
+    const raw = String(phone || '').trim();
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.startsWith('0') && digits.length >= 10 && digits.length <= 11) digits = `20${digits.slice(1)}`;
+    if (!/^\d{8,15}$/.test(digits)) throw new Error('The customer WhatsApp number is missing or invalid.');
+    return `${digits}@c.us`;
+};
+
+const sendWhatsAppMessage = async (phone, message) => {
+    if (config.safeLocalProductionMode) return { deliveryStatus: 'SKIPPED' };
+    const chatId = normalizeRecipientChatId(phone);
+    const safeMessage = String(message || '').trim();
+    if (!safeMessage) throw new Error('WhatsApp message cannot be empty.');
+    if (!client || currentState !== WHATSAPP_STATE.CONNECTED) throw new Error('WhatsApp client is not connected.');
+    return client.sendMessage(chatId, safeMessage);
+};
+
 const sendAdminNotification = async (message) => {
     if (config.safeLocalProductionMode) return null;
 
-    const chatId = normalizeAdminChatId();
+    const configured = await Setting.findOne({ key: 'adminNotificationWhatsApp' }).select('value').lean().catch(() => null);
+    const chatId = normalizeAdminChatId(configured?.value || process.env.ADMIN_NOTIFICATION_NUMBER);
 
     if (!chatId) {
-        throw new Error('ADMIN_NOTIFICATION_NUMBER is not configured.');
+        throw new Error('ADMIN_NOTIFICATION_NUMBER or the ULTRA notification number is not configured.');
     }
 
     if (!client || currentState !== WHATSAPP_STATE.CONNECTED) {
@@ -270,5 +290,6 @@ module.exports = {
     resetWhatsAppClient,
     destroyWhatsAppClient,
     getStatus,
+    sendWhatsAppMessage,
     sendAdminNotification,
 };

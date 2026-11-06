@@ -161,13 +161,13 @@ const buildOrderFieldsNotificationBlock = (order, product = null) => {
 const notifyAdminOrderCreated = ({ order, userId, productName, quantity, product = null }) => {
     try {
         (async () => {
-            const user = await User.findById(userId).select('name email').lean();
+            const user = await User.findById(userId).select('name email currency walletBalance').lean();
             const orderRef = order?.displayId || order?.orderNumber || order?._id;
             const userName = user?.name || user?.email || userId;
             const orderFieldsBlock = buildOrderFieldsNotificationBlock(order, product || order?.productId);
 
             await whatsappService.sendAdminNotification(
-                `📦 *طلب جديد!*\nرقم: ${orderRef}\nالمستخدم: ${userName}\nالمنتج: ${productName}\nالكمية: ${quantity}${orderFieldsBlock}`
+                `📦 *طلب جديد!*\nرقم: ${orderRef}\nالمستخدم: ${userName}\nمعرّف العميل: ${userId}\nالبريد: ${user?.email || 'غير متاح'}\nالمنتج: ${productName}\nالكمية: ${quantity}\nالمبلغ: ${order?.chargedAmount ?? order?.totalPrice ?? 'غير متاح'} ${order?.currency || ''}\nالرصيد الحالي وقت الإشعار: ${user?.walletBalance ?? 'غير متاح'} ${user?.currency || ''}${orderFieldsBlock}`
             );
         })().catch((err) => {
             console.error('WhatsApp Notification failed:', err.message);

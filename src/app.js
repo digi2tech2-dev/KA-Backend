@@ -35,6 +35,11 @@ const resellerRoutes = require('./modules/reseller/reseller.routes');
 const clientCompatRoutes = require('./modules/clientCompat/clientCompat.routes');
 const paymentEventRoutes = require('./modules/paymentEvents/paymentEvent.routes');
 const uploadRoutes = require('./shared/routes/upload.routes');
+const platformThemeRoutes = require('./modules/theme/platform.routes');
+const publicThemeRoutes = require('./modules/theme/theme.routes');
+const productRecoveryRoutes = require('./modules/admin/productRecovery.routes');
+const maintenanceRoutes = require('./modules/maintenance/maintenance.routes');
+const maintenanceGate = require('./shared/middlewares/maintenanceGate');
 const { startDefaultSettingsSeed } = require('./shared/startup/defaultSettingsSeed');
 const path = require('path');
 startDefaultSettingsSeed();
@@ -112,6 +117,9 @@ app.get('/health', (req, res) => {
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 const API_PREFIX = '/api';
+app.use(`${API_PREFIX}/maintenance`, maintenanceRoutes);
+app.use(API_PREFIX, maintenanceGate);
+app.use('/client/api', maintenanceGate);
 
 // Compatibility aliases have their own documented numeric rate-limit envelope.
 app.use(API_PREFIX, (req, res, next) => {
@@ -134,6 +142,8 @@ app.use(`${API_PREFIX}/providers`, providerRoutes);
 app.use(`${API_PREFIX}/v1/reseller`, resellerRoutes);
 app.use(`${API_PREFIX}/client/api`, compatApiLimiter, clientCompatRoutes);
 app.use(`${API_PREFIX}/client`, resellerRoutes);
+app.use(`${API_PREFIX}/theme`, publicThemeRoutes);
+app.use(`${API_PREFIX}/admin/theme`, platformThemeRoutes);
 
 // ── User Panel ─────────────────────────────────────────────────────────────────
 app.use(`${API_PREFIX}/me`, meRoutes);
@@ -224,6 +234,7 @@ app.get(`${API_PREFIX}/public/catalog`, async (req, res) => {
 });
 
 // ── Admin Routes ──────────────────────────────────────────────────────────────
+app.use(`${API_PREFIX}/admin/product-recovery`, productRecoveryRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/admin`, adminCatalogRoutes);
 app.use(`${API_PREFIX}/admin/currencies`, currencyRoutes);
