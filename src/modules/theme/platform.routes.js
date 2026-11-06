@@ -78,4 +78,3 @@ router.post('/media/upload', mediaLimit, (req, res, next) => {
 });
 
 module.exports = router;
-
