@@ -342,6 +342,7 @@ const placeOrder = catchAsync(async (req, res) => {
  *   3. Currency Conversion: displayPrice = markedUpUSD × userCurrencyRate
  */
 const getProducts = catchAsync(async (req, res) => {
+    const { getUserProductOverrides } = require('../users/userProductOverride.service');
     const page = parsePage(req.query.page);
     const limit = parseLimit(req.query.limit);
     const { Product } = require('../products/product.model');
@@ -351,6 +352,9 @@ const getProducts = catchAsync(async (req, res) => {
     const { calculateFinalPrice } = require('../orders/pricing.service');
 
     const filter = { isActive: true, deletedAt: null };
+    const userOverrides = await getUserProductOverrides(req.user._id);
+    const hiddenIds = [...userOverrides.values()].filter((row) => row.isHidden).map((row) => row.productId);
+    if (hiddenIds.length) filter._id = { $nin: hiddenIds };
     if (req.query.search) {
         filter.$or = [
             { name: { $regex: req.query.search, $options: 'i' } },
@@ -382,7 +386,8 @@ const getProducts = catchAsync(async (req, res) => {
 
     // ── 3. Apply pipeline: Base → Markup → Currency ───────────────────────────
     const converted = products.map((p) => {
-        const markedUpUSD = calculateFinalPrice(p.basePrice, markupPercentage);
+        const override = userOverrides.get(String(p._id));
+        const markedUpUSD = override?.priceOverride ?? calculateFinalPrice(p.basePrice, markupPercentage);
         const showAccountNumber = Boolean(p.showAccountNumber);
         return {
             ...p,
@@ -401,6 +406,7 @@ const getProducts = catchAsync(async (req, res) => {
  * Single product detail — full pricing pipeline applied.
  */
 const getProduct = catchAsync(async (req, res) => {
+    const { getUserProductOverride } = require('../users/userProductOverride.service');
     const { Product } = require('../products/product.model');
     const Group = require('../groups/group.model');
     const { getConversionRate } = require('../../services/currencyConverter.service');
@@ -412,6 +418,8 @@ const getProduct = catchAsync(async (req, res) => {
         .lean();
 
     if (!product) throw new NotFoundError('Product');
+    const userOverride = await getUserProductOverride(req.user._id, product._id);
+    if (userOverride?.isHidden) throw new NotFoundError('Product');
 
     // ── 1. Group markup ───────────────────────────────────────────────────────
     let markupPercentage = 0;
@@ -425,7 +433,7 @@ const getProduct = catchAsync(async (req, res) => {
     const rate = await getConversionRate(userCurrency);
 
     // ── 3. Pipeline: Base → Markup → Currency ─────────────────────────────────
-    const markedUpUSD = calculateFinalPrice(product.basePrice, markupPercentage);
+    const markedUpUSD = userOverride?.priceOverride ?? calculateFinalPrice(product.basePrice, markupPercentage);
     const showAccountNumber = Boolean(product.showAccountNumber);
 
     sendSuccess(res, {

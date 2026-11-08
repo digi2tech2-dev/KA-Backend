@@ -20,7 +20,7 @@ test('searches every active provider and sorts USD prices without merging duplic
     expect(getProviderAdapter).toHaveBeenCalledTimes(2);
     expect(second._id).toBeDefined();
 });
-test('reports unavailable provider separately and does not invent currency or verified limits', async () => {
+test('reports unavailable provider separately and shows supplier price without a currency', async () => {
     await Provider.create({ name:'Offline', slug:'offline', baseUrl:'https://example.invalid', isActive:true });
     await Provider.create({ name:'Incomplete', slug:'incomplete', baseUrl:'https://example.invalid', isActive:true });
     getProviderAdapter.mockImplementation((provider) => ({ fetchProducts: async () => {
@@ -30,8 +30,23 @@ test('reports unavailable provider separately and does not invent currency or ve
     const result = await recovery.search({});
     expect(result.failures).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain('credential-bearing');
-    expect(result.items[0]).toMatchObject({ price:null, currency:null, available:null, limitsVerified:false });
+    expect(result.items[0]).toMatchObject({ price:'4', currency:null, available:null, limitsVerified:false });
     expect((await recovery.search({ availability:'unavailable' })).items).toHaveLength(0);
+});
+test('preserves the source price and refreshes it on explicit search', async () => {
+    await Provider.create({ name:'Source price', slug:'source-price', baseUrl:'https://example.invalid', isActive:true });
+    let currentPrice = '12.345';
+    const fetchProducts = jest.fn(async () => [{
+        externalProductId:'one', rawName:'Original', rawPrice:'0.25',
+        rawPayload:{ sourcePrice:currentPrice, sourceCurrency:'EUR' },
+    }]);
+    getProviderAdapter.mockImplementation(() => ({ fetchProducts }));
+    const first = await recovery.search({ search:'Original' });
+    expect(first.items[0]).toMatchObject({ price:'12.345', currency:'EUR' });
+    currentPrice = '13.125';
+    const fresh = await recovery.search({ search:'Original', refresh:true });
+    expect(fresh.items[0].price).toBe('13.125');
+    expect(fetchProducts).toHaveBeenCalledTimes(2);
 });
 test('deduplicates repeated IDs from one provider without merging other providers', async () => {
     await Provider.create({ name:'Repeated', slug:'repeated', baseUrl:'https://example.invalid', isActive:true });

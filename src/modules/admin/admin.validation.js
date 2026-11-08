@@ -85,6 +85,7 @@ const listUsersQuery = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(20),
     status: Joi.string().valid('PENDING', 'ACTIVE', 'REJECTED'),
     verified: Joi.boolean(),
+    isApiEnabled: Joi.boolean(),
     email: Joi.string().max(128),
     search: Joi.string().trim().max(128).allow('', null),
     role: Joi.string().valid('ADMIN', 'SUPERVISOR', 'CUSTOMER'),
@@ -93,6 +94,12 @@ const listUsersQuery = Joi.object({
     sortBy: Joi.string().valid('createdAt', 'walletBalance', 'name', 'email', 'status', 'role').default('createdAt'),
     sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
 });
+
+const updateUserProductOverrideSchema = Joi.object({
+    priceOverride: Joi.alternatives().try(Joi.number().positive(), Joi.string().trim().pattern(/^\d+(?:\.\d+)?$/).custom((value, helpers) => Number(value) > 0 ? value : helpers.error('number.positive')), Joi.valid(null)),
+    isHidden: Joi.boolean(),
+    isHiddenFromApi: Joi.boolean(),
+}).min(1);
 
 const updateUserRoleSchema = Joi.object({
     role: Joi.string().valid('ADMIN', 'SUPERVISOR', 'CUSTOMER').required().messages({
@@ -509,6 +516,7 @@ module.exports = {
         // Users
         updateUser: updateUserSchema,
         listUsersQuery,
+        updateUserProductOverride: updateUserProductOverrideSchema,
         updateUserRole: updateUserRoleSchema,
         updateUserCurrency: updateUserCurrencySchema,
         updateCreditLimit: updateCreditLimitSchema,

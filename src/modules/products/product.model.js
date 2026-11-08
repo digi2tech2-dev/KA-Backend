@@ -242,6 +242,10 @@ const productSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        hideFromApi: {
+            type: Boolean,
+            default: false,
+        },
 
         /** Soft-delete timestamp. Null = not deleted. */
         deletedAt: {
