@@ -35,8 +35,20 @@ const pagination = {
  * Returns an Express middleware that validates req.body against `schema`.
  * Strips unknown fields (allowUnknown: false by default).
  */
-const validateBody = (schema) => (req, res, next) => {
-    const { error, value } = schema.validate(req.body, {
+const validateBody = (schema) => async (req, res, next) => {
+    let selected = schema;
+    try {
+        if (schema.describe().keys?.maxQty && schema.describe().keys?.providerProduct && req.body.maxQty != null && !Number.isInteger(Number(req.body.maxQty))
+            && await require('../providers/providerSafety').isMayaProductRequest(req)) {
+            selected = schema.fork(['maxQty'], (field) => {
+                const description = field.describe();
+                let replacement = Joi.number().min(1);
+                if (description.flags?.presence === 'required') replacement = replacement.required();
+                return replacement;
+            });
+        }
+    } catch (err) { return next(err); }
+    const { error, value } = selected.validate(req.body, {
         abortEarly: false,
         stripUnknown: true,
         convert: true,
@@ -235,17 +247,25 @@ const createProviderSchema = Joi.object({
     name: Joi.string().trim().min(2).max(64).required(),
     slug: Joi.string().trim().lowercase().pattern(/^[a-z0-9-]+$/).max(64),
     adapterType: Joi.string().trim().lowercase().max(64).allow('', null),
+    mayaCardConfig: Joi.object({ currency: Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null), currencyVerified: Joi.boolean() }),
     baseUrl: Joi.string().uri().required(),
     apiToken: Joi.string().trim().max(4096),
     isActive: Joi.boolean().default(true),
     syncInterval: Joi.number().integer().min(0).default(60),
     supportedFeatures: Joi.array().items(Joi.string()).default([]),
+}).custom((value, helpers) => {
+    if (require('../providers/mayaCard.rules').isMaya(value)) {
+        if (helpers.original.isActive === undefined) value.isActive = false;
+        if (helpers.original.syncInterval === undefined) value.syncInterval = 0;
+    }
+    return value;
 });
 
 const updateProviderSchema = Joi.object({
     name: Joi.string().trim().min(2).max(64),
     slug: Joi.string().trim().lowercase().pattern(/^[a-z0-9-]+$/).max(64),
     adapterType: Joi.string().trim().lowercase().max(64).allow('', null),
+    mayaCardConfig: Joi.object({ currency: Joi.string().trim().uppercase().pattern(/^[A-Z]{3}$/).allow(null), currencyVerified: Joi.boolean() }),
     baseUrl: Joi.string().uri(),
     apiToken: Joi.string().trim().max(4096).allow('', null),
     isActive: Joi.boolean(),

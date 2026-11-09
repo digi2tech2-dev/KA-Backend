@@ -15,13 +15,7 @@ const { NotFoundError, BusinessRuleError } = require('../../shared/errors/AppErr
 const { createAuditLog } = require('../audit/audit.service');
 const { ADMIN_ACTIONS, ENTITY_TYPES, ACTOR_ROLES } = require('../audit/audit.constants');
 
-const redactProvider = (provider) => {
-    const obj = provider?.toObject ? provider.toObject() : { ...(provider || {}) };
-    const hasApiToken = Boolean(obj.apiToken || obj.apiKey);
-    delete obj.apiToken;
-    delete obj.apiKey;
-    return { ...obj, hasApiToken };
-};
+const { redactProvider } = require('../providers/providerSafety');
 
 const redactProviderForAudit = (provider) => {
     const obj = redactProvider(provider);
@@ -79,13 +73,15 @@ const updateProvider = async (id, data, adminId) => {
     if (!provider) throw new NotFoundError('Provider');
 
     const before = redactProviderForAudit(provider);
-    const { name, slug, adapterType, baseUrl, apiToken, isActive, syncInterval, supportedFeatures } = data;
+    const { name, slug, adapterType, baseUrl, apiToken, apiKey, isActive, syncInterval, supportedFeatures, mayaCardConfig } = data;
 
     if (name !== undefined) provider.name = name;
     if (slug !== undefined) provider.slug = slug;
     if (adapterType !== undefined) provider.adapterType = adapterType;
     if (baseUrl !== undefined) provider.baseUrl = baseUrl;
     if (apiToken !== undefined && !isRedactedTokenPlaceholder(apiToken)) provider.apiToken = apiToken;
+    if (apiKey !== undefined && !isRedactedTokenPlaceholder(apiKey)) provider.apiKey = apiKey;
+    if (mayaCardConfig !== undefined) provider.mayaCardConfig = mayaCardConfig;
     if (isActive !== undefined) provider.isActive = isActive;
     if (syncInterval !== undefined) provider.syncInterval = syncInterval;
     if (supportedFeatures !== undefined) provider.supportedFeatures = supportedFeatures;

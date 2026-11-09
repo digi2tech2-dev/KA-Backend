@@ -1,6 +1,7 @@
 'use strict';
 
 const providerService = require('./provider.service');
+const { redactProvider } = require('./providerSafety');
 const providerProductService = require('./providerProduct.service');
 const productService = require('../products/product.service');
 const syncService = require('./sync.service');
@@ -16,7 +17,7 @@ const catchAsync = require('../../shared/utils/catchAsync');
  */
 const createProvider = catchAsync(async (req, res) => {
     const provider = await providerService.createProvider(req.body);
-    sendCreated(res, provider, 'Provider created successfully.');
+    sendCreated(res, redactProvider(provider), 'Provider created successfully.');
 });
 
 /**
@@ -26,7 +27,7 @@ const createProvider = catchAsync(async (req, res) => {
 const listProviders = catchAsync(async (req, res) => {
     const includeInactive = req.query.includeInactive === 'true';
     const providers = await providerService.listProviders({ includeInactive });
-    sendSuccess(res, providers);
+    sendSuccess(res, providers.map(redactProvider));
 });
 
 /**
@@ -34,7 +35,7 @@ const listProviders = catchAsync(async (req, res) => {
  */
 const getProvider = catchAsync(async (req, res) => {
     const provider = await providerService.getProviderById(req.params.id);
-    sendSuccess(res, provider);
+    sendSuccess(res, redactProvider(provider));
 });
 
 /**
@@ -42,7 +43,7 @@ const getProvider = catchAsync(async (req, res) => {
  */
 const updateProvider = catchAsync(async (req, res) => {
     const provider = await providerService.updateProvider(req.params.id, req.body);
-    sendSuccess(res, provider, 'Provider updated.');
+    sendSuccess(res, redactProvider(provider), 'Provider updated.');
 });
 
 /**
@@ -50,7 +51,7 @@ const updateProvider = catchAsync(async (req, res) => {
  */
 const deleteProvider = catchAsync(async (req, res) => {
     const result = await providerService.deleteProvider(req.params.id);
-    sendSuccess(res, result, 'Provider deleted and linked products detached.');
+    sendSuccess(res, { ...result, provider: redactProvider(result.provider) }, 'Provider deleted and linked products detached.');
 });
 
 // =============================================================================

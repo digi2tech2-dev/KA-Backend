@@ -9,3 +9,8 @@ dist/
 *.log
 .wwebjs_auth/
 .wwebjs_cache/
+
+# Local dependency and isolated test binary caches
+.tmp/npm-cache/
+.tmp/mongodb-binaries/
+.tmp/mongo-memory-*/

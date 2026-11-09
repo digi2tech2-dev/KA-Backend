@@ -147,6 +147,10 @@ const retryOrder = async (orderId, adminId, auditContext = null) => {
     if (!order) throw new NotFoundError('Order');
     assertGenericCoinRechargeManualReviewBlocked(order);
 
+    if (order.providerCode === 'maya-card') {
+        return updateOrderStatus(orderId, 'processing', adminId, { auditContext });
+    }
+
     if (order.status !== ORDER_STATUS.FAILED) {
         throw new BusinessRuleError(
             `Only FAILED orders can be retried. Current status: ${order.status}`,
@@ -478,7 +482,7 @@ const completeOrder = async (orderId, adminId, auditContext = null) => {
  * @returns {Promise<Order>}
  */
 const updateOrderStatus = async (orderId, status, adminId, { rejectionReason, auditContext } = {}) => {
-    const currentOrder = await Order.findById(orderId).select('providerCode status');
+    const currentOrder = await Order.findById(orderId).select('providerCode status refunded providerOrderId providerOrderUuid providerSaleAttemptedAt');
     if (!currentOrder) throw new NotFoundError('Order');
     assertGenericCoinRechargeManualReviewBlocked(currentOrder);
     const normalised = String(status || '').trim().toLowerCase();
@@ -499,6 +503,26 @@ const updateOrderStatus = async (orderId, status, adminId, { rejectionReason, au
     }
 
     if (['processing', 'retry', 'pending'].includes(normalised)) {
+        if (currentOrder.providerCode === 'maya-card') {
+            // Resume tracking the original purchase; never buy again from an admin status change.
+            if (currentOrder.refunded) {
+                throw new BusinessRuleError('A refunded Maya order cannot resume automatic tracking.', 'MAYA_REFUNDED_ORDER');
+            }
+            if (!currentOrder.providerOrderId && !(currentOrder.providerOrderUuid && currentOrder.providerSaleAttemptedAt)) {
+                throw new BusinessRuleError('This Maya order has no purchase to track.', 'MAYA_NO_PLACEMENT');
+            }
+            const updated = await Order.findOneAndUpdate(
+                { _id: orderId, status: currentOrder.status, refunded: false },
+                { $set: { status: ORDER_STATUS.PROCESSING, retryCount: 0, lastCheckedAt: null,
+                    ...(!currentOrder.providerOrderId ? { providerStatus: 'PLACEMENT_UNCERTAIN' } : {}) } },
+                { new: true }
+            );
+            if (!updated) throw new BusinessRuleError('Order changed; refresh before updating it.', 'ORDER_STATUS_CHANGED');
+            const ctx = resolveAuditContext(adminId, auditContext);
+            createAuditLog({ ...ctx, action: ADMIN_ACTIONS.ORDER_RETRIED, entityType: ENTITY_TYPES.ORDER, entityId: updated._id,
+                metadata: { action: 'resume_maya_tracking', previousStatus: currentOrder.status, newStatus: updated.status } });
+            return updated;
+        }
         return retryOrder(orderId, adminId, auditContext);
     }
 

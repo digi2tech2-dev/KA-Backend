@@ -195,6 +195,7 @@ const { Product } = require('../products/product.model');
  */
 const executeOrder = async (orderId, provider = null, auditContext = null) => {
     let nonIdempotentSaleAttempted = false;
+    let mayaSaleAttempted = false;
     // ─── TOP-LEVEL CRASH GUARD ─────────────────────────────────────────────
     // Wraps the entire function so ANY crash (parsing, DB, provider resolution)
     // marks the order FAILED + refund instead of leaving it stuck in PROCESSING.
@@ -212,7 +213,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
         return { order, placed: false, refunded: false };
     }
 
-    if (isCoinRechargeOrder(order) && order.providerSaleAttemptedAt) {
+    if ((isCoinRechargeOrder(order) || order.providerCode === 'maya-card') && order.providerSaleAttemptedAt) {
         return { order, placed: false, refunded: false };
     }
     const actorId = auditContext?.actorId ?? order.userId;
@@ -224,7 +225,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
     let resolvedProvider = provider;
     if (!resolvedProvider) {
         try {
-            const productProviderId = order.productId?.provider;
+            const productProviderId = order.providerCode === 'maya-card' ? order.mayaProviderId : order.productId?.provider;
             if (!productProviderId) {
                 throw new Error('Product has no Provider linked.');
             }
@@ -303,6 +304,25 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
         );
         if (!claimed) return { order: await Order.findById(orderId), placed: false, refunded: false };
     }
+    const maya = order.providerCode === 'maya-card' || require('../providers/mayaCard.rules').isMaya(resolvedProvider.provider);
+    if (maya) {
+        require('../providers/mayaCard.rules').validateQuantity(order.quantity);
+        if (!externalProductId) throw new Error('Maya external product ID is required');
+        // Re-check the persisted catalog rules immediately before dispatch.
+        const pp = await require('../providers/providerProduct.model').ProviderProduct.findById(order.productId.providerProduct);
+        require('../providers/mayaCard.rules').validateQuantity(order.quantity, pp?.rawPayload);
+        const claimed = await Order.findOneAndUpdate(
+            { _id: orderId, status: ORDER_STATUS.PROCESSING, providerSaleAttemptedAt: null },
+            { $set: { providerSaleAttemptedAt: new Date(), providerCode: 'maya-card', providerStatus: 'PLACEMENT_UNCERTAIN' } }, { new: true }
+        );
+        if (!claimed) return { order: await Order.findById(orderId), placed: false, refunded: false };
+        if (!claimed.providerOrderUuid) {
+            await Order.findByIdAndUpdate(orderId, { $set: { status: ORDER_STATUS.MANUAL_REVIEW } });
+            return { order: await Order.findById(orderId), placed: false, refunded: false };
+        }
+        order.providerOrderUuid = claimed.providerOrderUuid;
+        mayaSaleAttempted = true;
+    }
     let result;
     try {
         nonIdempotentSaleAttempted = isCoinRechargeOrder(order);
@@ -312,11 +332,13 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
             quantity: order.quantity,
             // This persisted value is the only upstream idempotency reference.
             // It must be reused across recovery checks and never regenerated.
-            referenceId: order.orderNumber,
-            ...mappedCustomerFields,   // ← spread translated customer fields onto params
+            referenceId: maya ? order.providerOrderUuid : order.orderNumber,
+            ...(maya ? { providerFields: mappedCustomerFields } : mappedCustomerFields),   // ← spread translated customer fields onto params
         });
     } catch (err) {
-        if (isCoinRechargeOrder(order)) {
+        if (maya) {
+            result = { success: true, providerStatus: 'PLACEMENT_UNCERTAIN', providerOrderId: null, rawResponse: { placement: 'uncertain' } };
+        } else if (isCoinRechargeOrder(order)) {
             result = { success: false, providerStatus: 'Unknown', outcomeUncertain: true,
                 errorCode: err?.code || 'COIN_RECHARGE_PLACE_ORDER_THROWN', rawResponse: { errorCode: err?.code || 'COIN_RECHARGE_PLACE_ORDER_THROWN' } };
         } else {
@@ -415,7 +437,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
                 orderId: orderId.toString(),
                 errorMessage: result.errorMessage,
                 providerStatus: result.providerStatus,
-                rawResponse: result.rawResponse,
+                rawResponse: maya ? { providerStatus: result.providerStatus } : result.rawResponse,
             },
         });
 
@@ -488,7 +510,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
                 orderId: orderId.toString(),
                 providerOrderId: result.providerOrderId,
                 providerStatus: result.providerStatus,
-                rawResponse: result.rawResponse,
+                rawResponse: maya ? { providerStatus: result.providerStatus } : result.rawResponse,
             },
         });
 
@@ -525,7 +547,7 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
             {
                 providerOrderId: result.providerOrderId,
                 providerStatus: result.providerStatus,
-                rawResponse: result.rawResponse,
+                rawResponse: maya ? { providerStatus: result.providerStatus } : result.rawResponse,
             }
         );
     }
@@ -567,6 +589,10 @@ const executeOrder = async (orderId, provider = null, auditContext = null) => {
 
     // ─── END OF TOP-LEVEL CRASH GUARD ──────────────────────────────────────
     } catch (fatalErr) {
+        if (mayaSaleAttempted) {
+            await Order.findByIdAndUpdate(orderId, { $set: { status: ORDER_STATUS.PROCESSING, providerStatus: 'PLACEMENT_UNCERTAIN', lastCheckedAt: new Date() } }).catch(() => null);
+            return { order: await Order.findById(orderId).catch(() => null), placed: false, refunded: false };
+        }
         if (nonIdempotentSaleAttempted) {
             await Order.findByIdAndUpdate(orderId, { $set: {
                 status: ORDER_STATUS.MANUAL_REVIEW, providerOutcome: 'uncertain',
@@ -629,6 +655,11 @@ const processOrderStatusResult = async (order, statusResult) => {
         // Still pending — bump retry count
         const newRetry = order.retryCount + 1;
 
+        if (newRetry >= MAX_RETRY_COUNT && order.providerCode === 'maya-card') {
+            await Order.findByIdAndUpdate(order._id, { $set: { status: ORDER_STATUS.MANUAL_REVIEW, providerStatus,
+                providerRawResponse: statusResult.rawResponse, retryCount: newRetry, lastCheckedAt: now } });
+            return { action: 'manual-review' };
+        }
         if (newRetry >= MAX_RETRY_COUNT) {
             // Exceeded retry limit → force-fail
             await Order.findByIdAndUpdate(order._id, {
@@ -901,7 +932,7 @@ const recoverUncertainPlacement = async (order, adapter) => {
     if (typeof adapter.checkOrderByReference !== 'function') return defer('unsupported');
 
     try {
-        const result = await adapter.checkOrderByReference(order.orderNumber);
+        const result = await adapter.checkOrderByReference(order.providerCode === 'maya-card' ? order.providerOrderUuid : order.orderNumber);
         if (!result?.found || !result.providerOrderId) return defer('not_found');
 
         const recovered = await Order.findByIdAndUpdate(order._id, {
@@ -1102,17 +1133,21 @@ const pollProcessingOrders = async (providerOverride = null) => {
     const groupsByCode = new Map();
     for (const order of healthy) {
         const code = String(order.providerCode || '').toLowerCase().trim() || '_unknown';
-        if (!groupsByCode.has(code)) groupsByCode.set(code, []);
-        groupsByCode.get(code).push(order);
+        const groupKey = code === 'maya-card' ? `${code}:${order.mayaProviderId || ''}` : code;
+        if (!groupsByCode.has(groupKey)) groupsByCode.set(groupKey, []);
+        groupsByCode.get(groupKey).push(order);
     }
 
-    for (const [code, orders] of groupsByCode) {
+    for (const [groupKey, orders] of groupsByCode) {
+        const code = groupKey.startsWith('maya-card:') ? 'maya-card' : groupKey;
         try {
             // ── Resolve provider doc by slug snapshot (not by product) ────────
             const { Provider } = require('../providers/provider.model');
             const providerDoc = await Provider.findOne({
+                ...(code === 'maya-card' ? { _id: orders[0].mayaProviderId || null } : {}),
                 $or: [
                     { slug: code },
+                    ...(code === 'maya-card' ? [{ adapterType: 'maya-card' }] : []),
                     { name: { $regex: `^${_escapeRegex(code)}$`, $options: 'i' } },
                 ],
                 isActive: true,
@@ -1200,4 +1235,5 @@ module.exports = {
     refundFailedOrder,
     processOrderStatusResult,
     pollProcessingOrders,
+    recoverUncertainPlacement,
 };

@@ -72,6 +72,9 @@ const createProviderValidation = [
         .optional()
         .isBoolean().withMessage('isActive must be a boolean'),
 
+    body('mayaCardConfig').optional().isObject(),
+    body('mayaCardConfig.currency').optional({ nullable: true }).isString().trim().toUpperCase().matches(/^[A-Z]{3}$/),
+    body('mayaCardConfig.currencyVerified').optional().isBoolean(),
     body('supportedFeatures')
         .optional()
         .isArray().withMessage('supportedFeatures must be an array'),
@@ -108,6 +111,9 @@ const updateProviderValidation = [
     body('isActive')
         .optional().isBoolean(),
 
+    body('mayaCardConfig').optional().isObject(),
+    body('mayaCardConfig.currency').optional({ nullable: true }).isString().trim().toUpperCase().matches(/^[A-Z]{3}$/),
+    body('mayaCardConfig.currencyVerified').optional().isBoolean(),
     body('supportedFeatures')
         .optional().isArray(),
 ];
@@ -166,7 +172,7 @@ const publishProductValidation = [
 
     body('maxQty')
         .optional()
-        .isInt({ min: 1 }).withMessage('maxQty must be >= 1'),
+        .custom(require('../providers/providerSafety').validateCatalogMax),
 
     body('category')
         .optional({ nullable: true })
@@ -241,7 +247,7 @@ const updatePublishedProductValidation = [
         .optional()
         .isFloat({ min: 0 }).withMessage('costPrice must be >= 0'),
     body('minQty').optional().isInt({ min: 1 }),
-    body('maxQty').optional().isInt({ min: 1 }),
+    body('maxQty').optional().custom(require('./providerSafety').validateCatalogMax),
     body('category').optional({ nullable: true }).isString().trim(),
     body('image').optional({ nullable: true }).isString(),
     body('displayOrder').optional().isInt(),

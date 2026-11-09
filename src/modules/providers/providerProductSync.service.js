@@ -288,7 +288,7 @@ const _performSync = async (provider, adapterOptions) => {
     // Only run when the response is non-empty; an empty response might indicate
     // a transient provider outage, not a genuine "no products" state.
     //
-    if (dtos.length > 0) {
+    if (dtos.length > 0 && !adapter.preserveMissingProducts) {
         try {
             const deactivateResult = await ProviderProduct.updateMany(
                 {
@@ -427,10 +427,11 @@ const syncProviderProducts = async (providerId, adapterOptions = {}) => {
  * @returns {Promise<Array<{ providerId, result?, error? }>>}
  */
 const syncAllProviders = async (adapterOptions = {}) => {
-    const providers = await Provider.find({ isActive: true }).select('_id');
+    const providers = await Provider.find({ isActive: true }).select('_id name slug adapterType syncInterval');
     const results = [];
 
     for (const p of providers) {
+        if (require('./mayaCard.rules').isMaya(p) && p.syncInterval === 0) continue;
         try {
             const result = await syncProviderProducts(p._id, adapterOptions);
             results.push({ providerId: p._id, result });

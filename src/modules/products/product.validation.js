@@ -78,9 +78,9 @@ const createProductValidation = [
 
     body('maxQty')
         .notEmpty().withMessage('maxQty is required')
-        .isInt({ min: 1 }).withMessage('maxQty must be >= 1')
+        .custom(require('../providers/providerSafety').validateCatalogMax)
         .custom((v, { req }) => {
-            if (parseInt(v) < parseInt(req.body.minQty)) {
+            if (Number(v) < Number(req.body.minQty)) {
                 throw new Error('maxQty must be >= minQty');
             }
             return true;
@@ -216,7 +216,7 @@ const publishProductValidation = [
 
     body('maxQty')
         .optional()
-        .isInt({ min: 1 }).withMessage('maxQty must be >= 1'),
+        .custom(require('../providers/providerSafety').validateCatalogMax),
 
     body('category')
         .optional({ nullable: true })
@@ -326,7 +326,7 @@ const updateProductValidation = [
 
     body('maxQty')
         .optional()
-        .isInt({ min: 1 }).withMessage('maxQty must be >= 1'),
+        .custom(require('../providers/providerSafety').validateCatalogMax),
 
     body('category')
         .optional({ nullable: true })

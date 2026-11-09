@@ -53,7 +53,7 @@
  */
 
 const { Order, ORDER_STATUS } = require('./order.model');
-const { processOrderStatusResult } = require('./orderFulfillment.service');
+const { processOrderStatusResult, recoverUncertainPlacement } = require('./orderFulfillment.service');
 const { getProviderAdapter } = require('../providers/adapters/adapter.factory');
 const { Provider } = require('../providers/provider.model');
 
@@ -158,9 +158,12 @@ const groupOrdersByProvider = async (orders) => {
     for (const order of orders) {
         // order.productId is populated (from the find query below)
         const providerProductDoc = order.productId?.providerProduct;
-        const providerId = providerProductDoc?.provider
+        const mayaProvider = order.providerCode === 'maya-card'
+            ? await Provider.findById(order.mayaProviderId) : null;
+        const providerId = order.providerCode === 'maya-card' ? (mayaProvider ? String(mayaProvider._id) : null) : providerProductDoc?.provider
             ? String(providerProductDoc.provider)
             : null;
+        if (mayaProvider) providerCache.set(providerId, mayaProvider);
 
         if (!providerId) {
             // Standalone product — no provider attached; skip polling
@@ -245,7 +248,14 @@ const pollProviderGroup = async (providerId, providerDoc, orders) => {
     const orderMap = new Map(orders.map((o) => [o.providerOrderId, o]));
 
     // Split into sub-batches to respect MAX_BATCH_SIZE
-    const batches = chunk(orders, MAX_BATCH_SIZE);
+    const uncertain = orders.filter((o) => o.providerCode === 'maya-card' && !o.providerOrderId);
+    for (const order of uncertain) {
+        const { action } = await recoverUncertainPlacement(order, adapter);
+        if (action === 'completed') result.completed++;
+        else if (action === 'failed') result.failed++;
+        else result.pending++;
+    }
+    const batches = chunk(orders.filter((o) => !uncertain.includes(o)), MAX_BATCH_SIZE);
 
     for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
         const batch = batches[batchIdx];
@@ -365,7 +375,7 @@ const pollPendingOrders = async (options = {}) => {
         processingOrders = await Order
             .find({
                 status: ORDER_STATUS.PROCESSING,
-                providerOrderId: { $ne: null },
+                $or: [{ providerOrderId: { $ne: null } }, { providerCode: 'maya-card', providerStatus: 'PLACEMENT_UNCERTAIN', providerOrderId: null }],
             })
             .populate({
                 path: 'productId',
@@ -484,7 +494,14 @@ const pollProviderGroupWithAdapter = async (providerId, providerDoc, orders, ada
         errors: [],
     };
 
-    const batches = chunk(orders, MAX_BATCH_SIZE);
+    const uncertain = orders.filter((o) => o.providerCode === 'maya-card' && !o.providerOrderId);
+    for (const order of uncertain) {
+        const { action } = await recoverUncertainPlacement(order, adapter);
+        if (action === 'completed') result.completed++;
+        else if (action === 'failed') result.failed++;
+        else result.pending++;
+    }
+    const batches = chunk(orders.filter((o) => !uncertain.includes(o)), MAX_BATCH_SIZE);
 
     for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
         const batch = batches[batchIdx];

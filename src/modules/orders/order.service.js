@@ -573,15 +573,24 @@ const _attemptCreateOrder = async (
 
         // ── 2. Validate Quantity Bounds ────────────────────────────────────────
         const linkedProviderProduct = product.providerProduct
-            ? await ProviderProduct.findById(product.providerProduct).select('externalProductId').lean()
+            ? await ProviderProduct.findById(product.providerProduct).select('externalProductId rawPayload provider isActive').lean()
             : null;
+        const linkedProvider = linkedProviderProduct?.provider ? await Provider.findById(linkedProviderProduct.provider).session(session) : null;
+        const isMayaProduct = require('../providers/mayaCard.rules').isMaya(linkedProvider);
+        if (isMayaProduct) {
+            providerCode = 'maya-card';
+            require('../providers/mayaCard.rules').validateQuantity(quantity, linkedProviderProduct.rawPayload);
+            if (!linkedProviderProduct.isActive || !linkedProvider.isActive || !linkedProvider.mayaCardConfig?.currencyVerified || !linkedProvider.mayaCardConfig?.currency) {
+                throw new BusinessRuleError('Maya product or verified currency is unavailable', 'MAYA_PRODUCT_UNAVAILABLE');
+            }
+        }
         const isCoinRechargeProduct = linkedProviderProduct?.externalProductId === COIN_RECHARGE_DYNAMIC_PRODUCT_ID;
         if (isCoinRechargeProduct) providerCode = 'coin-recharge';
         const quantityText = String(quantity ?? '');
         if (isCoinRechargeProduct && (!/^\d+$/.test(quantityText) || !Number.isSafeInteger(Number(quantityText)) || Number(quantityText) < 1)) {
             throw new BusinessRuleError('Coin quantity must be a positive safe integer.', 'INVALID_COIN_RECHARGE_QUANTITY');
         }
-        const qty = isCoinRechargeProduct ? Number(quantityText) : parseInt(quantity, 10);
+        const qty = isMayaProduct || isCoinRechargeProduct ? Number(quantityText) : parseInt(quantity, 10);
 
         if (qty < product.minQty || qty > product.maxQty) {
             throw new BusinessRuleError(
@@ -736,6 +745,8 @@ const _attemptCreateOrder = async (
                 userId,
                 productId: product._id,
                 orderNumber,
+                providerOrderUuid: isMayaProduct ? crypto.randomUUID() : undefined,
+                mayaProviderId: isMayaProduct ? linkedProvider._id : undefined,
                 quantity: qty,
                 basePriceSnapshot: '0',
                 markupPercentageSnapshot: 0,
@@ -917,6 +928,8 @@ const _attemptCreateOrder = async (
             userId,
             productId: product._id,
             orderNumber,
+            providerOrderUuid: isMayaProduct ? crypto.randomUUID() : undefined,
+            mayaProviderId: isMayaProduct ? linkedProvider._id : undefined,
             quantity: qty,
             basePriceSnapshot: pricing.basePrice,
             markupPercentageSnapshot: pricing.markupPercentage,

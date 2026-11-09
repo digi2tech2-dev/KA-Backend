@@ -66,7 +66,12 @@ const assertProductionAdapterAllowed = (AdapterClass, provider, { strict = false
 //
 const { CoinRechargeAdapter } = require('./coinRecharge.adapter');
 
+const { MayaCardAdapter } = require('./mayaCard.adapter');
+
 const registry = new Map([
+    ['maya-card', MayaCardAdapter],
+    ['maya card', MayaCardAdapter],
+    ['mayacard', MayaCardAdapter],
     ['coin-recharge', CoinRechargeAdapter],
     ['coin recharge', CoinRechargeAdapter],
     ['coinrecharge', CoinRechargeAdapter],

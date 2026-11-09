@@ -100,6 +100,11 @@ const providerSchema = new mongoose.Schema(
             default: [],
         },
 
+        mayaCardConfig: {
+            currency: { type: String, trim: true, uppercase: true, default: null, match: /^[A-Z]{3}$/ },
+            currencyVerified: { type: Boolean, default: false },
+        },
+
         coinRechargeConfig: {
             product: {
                 externalProductId: { type: String, trim: true, default: 'coin-recharge-dynamic' },
@@ -135,6 +140,10 @@ providerSchema.virtual('effectiveToken').get(function () {
 // ─── Pre-save: auto-generate slug ───────────────────────────────────────────────
 
 providerSchema.pre('save', function (next) {
+    if (this.isNew && require('./mayaCard.rules').isMaya(this)) {
+        if (!this.isModified('syncInterval')) this.syncInterval = 0;
+        if (!this.isModified('isActive')) this.isActive = false;
+    }
     if (!this.slug && this.name) {
         this.slug = this.name
             .toLowerCase()

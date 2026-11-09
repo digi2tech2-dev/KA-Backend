@@ -46,6 +46,9 @@ const orderSchema = new mongoose.Schema(
             index: true,
         },
 
+        providerOrderUuid: { type: String, default: null, immutable: true },
+        mayaProviderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Provider', default: null, immutable: true },
+
         compatOrderId: {
             type: String,
             trim: true,
