@@ -481,8 +481,8 @@ describe('Client compatibility API products and content', () => {
         expect(mapped.qty_values).toEqual([100, 500, 1000]);
         expect(mapped.allowed_quantities).toEqual([100, 500, 1000]);
         expect(mapped.quantities).toEqual([100, 500, 1000]);
-        expect(mapped.price).toBe(1.234568);
-        expect(mapped.cost).toBe(1.234568);
+        expect(mapped.price).toBe('1.2345678');
+        expect(mapped.cost).toBe('1.2345678');
         expect(mapped.original_price).toBe(1.1);
         expect(mapped.currency).toBe('EGP');
     });

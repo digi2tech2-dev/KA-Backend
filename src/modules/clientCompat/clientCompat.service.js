@@ -158,7 +158,10 @@ const priceProduct = async (product, reseller, override = null) => {
         priceUsd,
         // Canonical product prices are always the USD reseller sale price.
         // Wallet/profile currency remains independent from this catalog contract.
-        price: Number(priceUsd),
+        // Keep this as a decimal string until the response mapper. Converting
+        // provider prices to Number here loses significant digits before the
+        // canonical API can return them.
+        price: String(priceUsd),
         currency: 'USD',
     };
 };

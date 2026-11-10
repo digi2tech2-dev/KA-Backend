@@ -10,7 +10,7 @@
  * at order creation time to produce the price snapshots burned into
  * each Order document.
  *
- * Prices are STRING throughout (up to 50 dp). Only chargedAmount is
+ * Prices are STRING throughout (high precision). Only chargedAmount is
  * a 2 dp Number because wallet balances are standard fiat.
  */
 
@@ -43,14 +43,8 @@ const calculateFinalPrice = (basePrice, percentage) => {
             'INVALID_BASE_PRICE'
         );
     }
-    if (!Number.isFinite(Number(basePrice))) {
-        throw new BusinessRuleError(
-            'basePrice must be a non-negative number.',
-            'INVALID_BASE_PRICE'
-        );
-    }
     const base = toDecimal(basePrice);
-    if (base.isNegative()) {
+    if (!base.isFinite() || base.isNegative()) {
         throw new BusinessRuleError(
             'basePrice must be a non-negative number.',
             'INVALID_BASE_PRICE'

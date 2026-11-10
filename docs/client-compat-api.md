@@ -52,6 +52,13 @@ use canonical structured fields while legacy consumers may continue using
 }
 ```
 
+Price fields are returned as JSON numbers while they fit the historical
+6-decimal compatibility range. When a provider price has more precision, the
+same fields are returned as decimal strings so no digits are lost during JSON
+serialization (for example, `"0.000000123456789"`). Integrations must accept
+both JSON number and decimal-string representations for `price`, `cost`,
+`rate`, `api_price`, `provider_price`, `base_price`, and `original_price`.
+
 ## Create an order
 
 ```http

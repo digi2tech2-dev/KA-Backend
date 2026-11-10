@@ -8,7 +8,7 @@
  * ALL product prices (basePrice, providerPrice, finalPrice, rawPrice,
  * manualPriceAdjustment) are stored as **String** in MongoDB and flow
  * through the backend as strings. This module wraps `decimal.js` so
- * that every calculation preserves up to 50 decimal places.
+ * that every calculation preserves high-precision decimal places.
  *
  * Wallet-facing amounts (chargedAmount, walletDeducted) are still
  * standard 2 dp Numbers because fiat currency doesn't need 50 dp.
@@ -16,12 +16,11 @@
 
 const Decimal = require('decimal.js');
 
-// 60 significant-digit internal precision keeps 50 dp safe even after
-// multi-step multiply / divide chains.
-Decimal.set({ precision: 60, rounding: Decimal.ROUND_HALF_UP });
+// Keep enough working precision for long supplier prices and markup chains.
+Decimal.set({ precision: 1100, rounding: Decimal.ROUND_HALF_UP });
 
 /** How many decimal places we preserve for stored prices. */
-const PRICE_DP = 50;
+const PRICE_DP = 1000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
