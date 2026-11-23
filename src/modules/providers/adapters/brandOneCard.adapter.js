@@ -15,6 +15,7 @@ const statusOf = (status) => ({ accept: 'Completed', wait: 'Pending', reject: 'C
 class BrandOneCardAdapter extends BaseProviderAdapter {
     constructor(provider, options = {}) {
         super(provider, options);
+        this.preserveMissingProducts = true;
         const token = this._resolveToken();
         if (!token) throw new Error('[BrandOneCard] api token is required');
         this._client = options.httpClient || axios.create({
@@ -71,7 +72,7 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
             }
             rates.set(code, rate);
         }
-        return products.map((product) => {
+        return products.flatMap((product) => {
             const code = currencyCode(product.currency) || accountCurrency;
             let price;
             try { price = new Decimal(product.price); } catch (_) { price = new Decimal(NaN); }
@@ -81,7 +82,8 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
             const qty = product.qty_values;
             if (qty != null && (!Number.isFinite(Number(qty.min)) || !Number.isFinite(Number(qty.max))
                 || Number(qty.min) < 1 || Number(qty.max) < Number(qty.min))) {
-                throw new BusinessRuleError(`[BrandOneCard] Invalid quantity range for product ${product.id}`, 'PROVIDER_QUANTITY_INVALID');
+                console.warn(`[BrandOneCard] Skipping product ${product.id}: invalid quantity range`);
+                return [];
             }
             // The existing platform bills price x quantity. Keep fixed-price
             // packages at one to preserve that contract without changing it.
@@ -92,7 +94,7 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
                     'PROVIDER_PACKAGE_QUANTITY_UNSUPPORTED'
                 );
             }
-            return this._validateDTO({
+            return [this._validateDTO({
                 externalProductId: String(product.id ?? ''),
                 rawName: String(product.name || 'Unknown'),
                 rawPrice: toStr(price.div(rates.get(code))),
@@ -101,7 +103,7 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
                 isActive: ![false, 0, '0', 'false'].includes(product.available),
                 rawPayload: sanitize({ ...product, sourcePrice: product.price, sourceCurrency: code,
                     pricingCurrency: 'USD', platformRate: toStr(rates.get(code)) }),
-            });
+            })];
         });
     }
 
