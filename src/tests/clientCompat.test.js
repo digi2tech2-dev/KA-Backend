@@ -558,17 +558,20 @@ describe('Client compatibility API orders', () => {
         expect(denied.body.code).toBe(123);
     });
 
-    test('uses code 130 only to block compatibility placement during maintenance', async () => {
+    test.each(['/client/api', '/api/client/api'])('uses code 130 only for order placement during maintenance at %s', async (prefix) => {
         const { token } = await createApiReseller({ token: 'canonical-maintenance-token' });
         const product = await createCompatProduct({ executionType: 'manual' });
         await Setting.create({ key: 'maintenanceMode', value: true, description: 'test' });
-        const blocked = await rawPost('/client/api/orders', {
+        const blocked = await rawPost(`${prefix}/orders`, {
             product_id: product.compatProductId, qty: 1, order_uuid: 'maintenance-order',
         }, authHeaders(token));
         expect(blocked.status).toBe(503);
         expect(blocked.body).toEqual({ status: 'ERROR', code: 130, message: 'Site is under maintenance' });
 
-        const profile = await rawGet('/client/api/profile', authHeaders(token));
+        const legacyOrder = await rawGet(`${prefix}/newOrder/${product.compatProductId}/params?qty=1&order_uuid=maintenance-get`, authHeaders(token));
+        expect(legacyOrder.status).toBe(503);
+        expect(legacyOrder.body.code).toBe(130);
+        const profile = await rawGet(`${prefix}/profile`, authHeaders(token));
         expect(profile.status).toBe(200);
     });
 

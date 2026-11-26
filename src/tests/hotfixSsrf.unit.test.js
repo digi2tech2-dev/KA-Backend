@@ -12,3 +12,27 @@ test('rejects mixed DNS answers at connection time', async () => {
     jest.spyOn(dns, 'lookup').mockImplementation((host, options, callback) => callback(null,[{ address:'8.8.8.8',family:4 },{address:'127.0.0.1',family:4}]));
     await expect(new Promise((resolve,reject) => policy.safeLookup('example.com',{},(error,value) => error?reject(error):resolve(value)))).rejects.toMatchObject({ code:'OUTBOUND_DESTINATION_DENIED' });
 });
+
+
+test('production transport requires an approved origin and enforces connection safeguards', () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalOrigins = process.env.SUPPLIER_TRUSTED_ORIGINS;
+    try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.SUPPLIER_TRUSTED_ORIGINS;
+        const client = policy.create({ baseURL: 'https://supplier.example', timeout: 30000 });
+        const guard = client.interceptors.request.handlers[0].fulfilled;
+        expect(() => guard({ url: '/profile' })).toThrow();
+        process.env.SUPPLIER_TRUSTED_ORIGINS = 'https://supplier.example';
+        const request = guard({ url: '/profile', timeout: 999999, proxy: {}, maxRedirects: 5 });
+        expect(request).toMatchObject({ proxy: false, maxRedirects: 0, timeout: 180000, adapter: 'http' });
+        expect(request.httpsAgent.options.rejectUnauthorized).toBe(true);
+        expect(request.lookup).toBe(policy.safeLookup);
+        expect(() => guard({ url: 'https://other.example/profile' })).toThrow();
+        expect(() => guard({ url: 'http://supplier.example/profile' })).toThrow();
+        request.httpsAgent.destroy();
+    } finally {
+        if (originalEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalEnv;
+        if (originalOrigins === undefined) delete process.env.SUPPLIER_TRUSTED_ORIGINS; else process.env.SUPPLIER_TRUSTED_ORIGINS = originalOrigins;
+    }
+});

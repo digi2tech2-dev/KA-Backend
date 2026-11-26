@@ -39,7 +39,7 @@ test.each(['brand1-card', 'brand1 card', 'brand1card'])('factory preserves %s', 
     expect(getAdapter({ ...providerData, slug })).toBeInstanceOf(AlkasrVipAdapter);
 });
 test('HTTP client uses documented base URL and api-token authentication', () => {
-    const spy = jest.spyOn(axios, 'create').mockReturnValue({ get: jest.fn() });
+    const spy = jest.spyOn(axios, 'create').mockReturnValue({ get: jest.fn(), interceptors: { request: { use: jest.fn() } } });
     new BrandOneCardAdapter({ apiToken: 'test-token' });
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'https://api.brand-one-card.com',
         headers: expect.objectContaining({ 'api-token': 'test-token' }) }));

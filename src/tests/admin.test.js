@@ -11,6 +11,7 @@
  */
 
 const mongoose = require('mongoose');
+const { randomUUID } = require('node:crypto');
 const { User, USER_STATUS } = require('../modules/users/user.model');
 const { WalletTransaction } = require('../modules/wallet/walletTransaction.model');
 const { Setting, seedDefaultSettings } = require('../modules/admin/setting.model');
@@ -202,7 +203,7 @@ describe('[2] Admin Wallet Service', () => {
         const { customer, admin } = await setup();
         const before = customer.walletBalance;
 
-        await adminWalletService.addFunds(customer._id, 50, 'Test credit', admin._id);
+        await adminWalletService.addFunds(customer._id, 50, 'Test credit', admin._id, randomUUID());
 
         const updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBeCloseTo(before + 50, 2);
@@ -220,7 +221,7 @@ describe('[2] Admin Wallet Service', () => {
             creditUsed: 500,
         });
 
-        await adminWalletService.addFunds(customer._id, 200, 'Debt repayment', admin._id);
+        await adminWalletService.addFunds(customer._id, 200, 'Debt repayment', admin._id, randomUUID());
 
         const updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBe(-300);
@@ -229,21 +230,21 @@ describe('[2] Admin Wallet Service', () => {
 
     it('addFunds rejects amount = 0', async () => {
         const { customer, admin } = await setup();
-        await expect(adminWalletService.addFunds(customer._id, 0, 'bad', admin._id))
-            .rejects.toMatchObject({ code: 'INVALID_ADJUSTMENT_AMOUNT' });
+        await expect(adminWalletService.addFunds(customer._id, 0, 'bad', admin._id, randomUUID()))
+            .rejects.toMatchObject({ code: 'INVALID_AMOUNT' });
     });
 
-    it('addFunds rejects amount > 100000', async () => {
+    it('addFunds rejects amounts above the financial approval threshold', async () => {
         const { customer, admin } = await setup();
-        await expect(adminWalletService.addFunds(customer._id, 100_001, 'too big', admin._id))
-            .rejects.toMatchObject({ code: 'INVALID_ADJUSTMENT_AMOUNT' });
+        await expect(adminWalletService.addFunds(customer._id, 100_001, 'too big', admin._id, randomUUID()))
+            .rejects.toMatchObject({ code: 'SECOND_APPROVAL_REQUIRED' });
     });
 
     it('deductFunds reduces wallet and creates a DEBIT transaction', async () => {
         const { customer, admin } = await setup();
         const before = customer.walletBalance;   // 100 from helper
 
-        await adminWalletService.deductFunds(customer._id, 30, 'Test debit', admin._id);
+        await adminWalletService.deductFunds(customer._id, 30, 'Test debit', admin._id, randomUUID());
 
         const updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBeCloseTo(before - 30, 2);
@@ -261,7 +262,7 @@ describe('[2] Admin Wallet Service', () => {
             creditUsed: 0,
         });
 
-        await adminWalletService.deductFunds(customer._id, 200, 'Credit draw', admin._id);
+        await adminWalletService.deductFunds(customer._id, 200, 'Credit draw', admin._id, randomUUID());
 
         const updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBe(-200);
@@ -271,7 +272,7 @@ describe('[2] Admin Wallet Service', () => {
     it('deductFunds throws INSUFFICIENT_BALANCE when wallet is too low', async () => {
         const { customer, admin } = await setup();
         // customer has 100 — try to deduct 200
-        await expect(adminWalletService.deductFunds(customer._id, 200, 'overdraft', admin._id))
+        await expect(adminWalletService.deductFunds(customer._id, 200, 'overdraft', admin._id, randomUUID()))
             .rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
 
         // Wallet must be unchanged
@@ -287,13 +288,13 @@ describe('[2] Admin Wallet Service', () => {
             creditUsed: 0,
         });
 
-        await adminWalletService.setBalance(customer._id, -250, 'Set debt', admin._id);
+        await adminWalletService.setBalance(customer._id, -250, 'Set debt', admin._id, randomUUID());
 
         let updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBe(-250);
         expect(updated.creditUsed).toBe(250);
 
-        await adminWalletService.setBalance(customer._id, 200, 'Clear debt', admin._id);
+        await adminWalletService.setBalance(customer._id, 200, 'Clear debt', admin._id, randomUUID());
 
         updated = await User.findById(customer._id);
         expect(updated.walletBalance).toBe(200);
@@ -309,8 +310,8 @@ describe('[2] Admin Wallet Service', () => {
 
     it('getTransactionHistory returns paginated transactions', async () => {
         const { customer, admin } = await setup();
-        await adminWalletService.addFunds(customer._id, 10, 'r1', admin._id);
-        await adminWalletService.addFunds(customer._id, 20, 'r2', admin._id);
+        await adminWalletService.addFunds(customer._id, 10, 'Credit one', admin._id, randomUUID());
+        await adminWalletService.addFunds(customer._id, 20, 'Credit two', admin._id, randomUUID());
 
         const result = await adminWalletService.getTransactionHistory(customer._id, { page: 1, limit: 5 });
         expect(result.transactions.length).toBeGreaterThanOrEqual(2);

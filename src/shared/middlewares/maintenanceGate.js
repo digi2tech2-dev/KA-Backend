@@ -11,9 +11,10 @@ const isAuthorizedAdmin = async (req) => {
 
     try {
         const token = authorization.slice(7).trim();
-        const decoded = jwt.verify(token, config.jwt.secret);
+        const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
         if (!decoded?.id || decoded.purpose === '2fa-pending') return false;
-        const user = await User.findById(decoded.id).select('role status profileCompletionRequired').lean();
+        const user = await User.findById(decoded.id).select('role status profileCompletionRequired sessionVersion isTwoFactorEnabled deletedAt blockedAt').lean();
+        require('../utils/sessionControl').validate(decoded, user);
         return user?.role === ROLES.ADMIN && user?.status === USER_STATUS.ACTIVE && !user?.profileCompletionRequired;
     } catch {
         return false;
@@ -27,6 +28,9 @@ const isMaintenanceControlRequest = (req) => {
 
 const maintenanceGate = async (req, res, next) => {
     try {
+        // These routes enforce maintenance on order placement using the documented numeric envelope.
+        const pathname = String(req.originalUrl || '').split('?')[0];
+        if (/^\/(?:api\/)?client\/api(?:\/|$)/i.test(pathname)) return next();
         const { enabled } = await maintenanceService.getStatus();
         // The SMS bridge authenticates its own signed payload and must receive
         // notifications for transfers already made before maintenance started.

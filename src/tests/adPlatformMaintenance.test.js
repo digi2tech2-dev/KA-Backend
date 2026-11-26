@@ -11,7 +11,7 @@ afterAll(async () => { await new Promise((resolve) => server.close(resolve)); aw
 beforeEach(clearCollections);
 const request = async (path, user, method = 'GET', body) => {
     const headers = { 'Content-Type': 'application/json' };
-    if (user) headers.Authorization = `Bearer ${jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET)}`;
+    if (user) headers.Authorization = `Bearer ${await require('../shared/utils/sessionControl').issue(user._id)}`;
     const response = await fetch(url + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: response.status, body: await response.json() };
 };
@@ -114,4 +114,19 @@ test('legacy edits advance revision and cannot be replaced by an older list', as
     expect((await request('/api/settings/payment')).body.data.supportContacts.revision).toBe(1);
     expect((await request('/api/admin/settings/supportContacts', admin, 'PATCH', { value: { entries: [], revision: 0 } })).status).toBe(409);
     expect((await request('/api/admin/settings/supportContacts', admin, 'PATCH', { value: { entries: [], revision: 1 } })).status).toBe(200);
+});
+
+
+test('maintenance bypass rejects revoked and legacy admin sessions', async () => {
+    const admin = await createAdmin();
+    await request('/api/maintenance/status', admin, 'PATCH', { enabled: true });
+    const session = require('../shared/utils/sessionControl');
+    const token = await session.issue(admin._id);
+    const bypass = require('../shared/middlewares/maintenanceGate').isAuthorizedAdmin;
+    const req = value => ({ headers: { authorization: `Bearer ${value}` } });
+    expect(await bypass(req(token))).toBe(true);
+    const { User } = require('../modules/users/user.model');
+    await User.findByIdAndUpdate(admin._id, { $set: { sessionVersion: 'revoked-version' } });
+    expect(await bypass(req(token))).toBe(false);
+    expect(await bypass(req(jwt.sign({ id: admin.id }, process.env.JWT_SECRET)))).toBe(false);
 });

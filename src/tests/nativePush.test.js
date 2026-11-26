@@ -77,13 +77,16 @@ describe('native Google ID tokens', () => {
 describe('device push tokens', () => {
     const token = (suffix) => `fcm-registration-token-${suffix}-${'x'.repeat(40)}`;
 
-    it('reassigns a globally unique installation token to its newest user', async () => {
+    it('requires the original account to unregister before handing off an installation token', async () => {
         const group = await createGroup();
         const firstUser = await createCustomer({ groupId: group._id });
         const secondUser = await createCustomer({ groupId: group._id });
         const value = token('handoff');
 
         await registerPushToken({ userId: firstUser._id, token: value, platform: 'android' });
+        await expect(registerPushToken({ userId: secondUser._id, token: value, platform: 'android' })).rejects.toMatchObject({ code: 'CONFLICT' });
+        expect((await DevicePushToken.findOne({ token: value })).userId.toString()).toBe(firstUser._id.toString());
+        await unregisterPushToken({ userId: firstUser._id, token: value });
         await registerPushToken({ userId: secondUser._id, token: value, platform: 'android' });
 
         const record = await DevicePushToken.findOne({}).select('+token');

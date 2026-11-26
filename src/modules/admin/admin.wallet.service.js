@@ -5,8 +5,8 @@
  *
  * Admin manual wallet adjustments.
  *
- * Uses sequential await operations — compatible with standalone MongoDB
- * instances (no replica set required).
+ * Manual add, deduct and set operations use transactions and require MongoDB
+ * configured as a replica set.
  */
 
 const { User } = require('../users/user.model');
@@ -108,10 +108,12 @@ const getTransactionHistory = async (userId, { page = 1, limit = 20 } = {}) => {
  * The admin dashboard displays balances in local currency, so the input
  * is naturally in the same denomination.
  *
- * No MongoDB transactions — uses atomic findOneAndUpdate + sequential create.
+ * Commits the balance, ledger, audit and operation key in one transaction.
  */
 const addFunds = async (userId, amount, reason, adminId, idempotencyKey) => {
-    return require('../../shared/utils/atomicAdminWallet').adjust('ADD', userId, amount, reason, adminId, idempotencyKey);
+    const result = await require('../../shared/utils/atomicAdminWallet').adjust('ADD', userId, amount, reason, adminId, idempotencyKey);
+    if (!result.idempotent) await notifyManualWalletCredit(result.transaction, result.user.currency);
+    return result;
 };
 
 /**
@@ -134,7 +136,7 @@ const deductFunds = async (userId, amount, reason, adminId, idempotencyKey) => {
 /**
  * Admin: forcefully set a user's wallet balance to an exact value.
  *
- * This bypasses credit limit checks — it is an admin override.
+ * The target balance must remain within the user's credit limit.
  * The amount parameter IS the desired new balance (can be negative).
  * Credit usage is recalculated based on the new balance.
  */

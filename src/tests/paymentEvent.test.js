@@ -92,6 +92,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
     await clearCollections();
+    await require('../modules/currency/currency.model').Currency.create({ code: 'EGP', name: 'Egyptian pound', symbol: 'EGP', platformRate: 50, isActive: true });
     bridgeConfig.enabled = true;
     bridgeConfig.hmacSecret = 'ka-bridge-test-secret';
     bridgeConfig.autoApprove = false;
@@ -172,11 +173,13 @@ describe('payment event persistence and matching', () => {
         expect((await PaymentEvent.findOne()).matchStatus).toBe('UNMATCHED');
 
         await clearCollections();
+        await require('../modules/currency/currency.model').Currency.create({ code: 'EGP', name: 'Egyptian pound', symbol: 'EGP', platformRate: 50, isActive: true });
         await createPendingVodafoneDeposit({ amount: 499 });
         await postEvent(walletSms());
         expect((await PaymentEvent.findOne()).matchStatus).toBe('MISMATCH');
 
         await clearCollections();
+        await require('../modules/currency/currency.model').Currency.create({ code: 'EGP', name: 'Egyptian pound', symbol: 'EGP', platformRate: 50, isActive: true });
         await createPendingVodafoneDeposit({ senderPhone: '01000000000' });
         await postEvent(walletSms());
         expect((await PaymentEvent.findOne()).matchStatus).toBe('MISMATCH');
@@ -194,8 +197,12 @@ describe('payment event persistence and matching', () => {
     });
 
     test('marks multiple exact candidate deposits as AMBIGUOUS', async () => {
-        await createPendingVodafoneDeposit();
-        await createPendingVodafoneDeposit();
+        const { deposit } = await createPendingVodafoneDeposit();
+        // Simulate legacy duplicates already stored before duplicate prevention.
+        const legacy = deposit.toObject();
+        delete legacy._id;
+        delete legacy.depositNumber;
+        await DepositRequest.create(legacy);
         await postEvent(walletSms());
         expect((await PaymentEvent.findOne()).matchStatus).toBe('AMBIGUOUS');
     });

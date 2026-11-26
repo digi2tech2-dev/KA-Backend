@@ -12,7 +12,7 @@ beforeEach(() => jest.spyOn(Currency, 'findOne').mockResolvedValue({ isActive: t
 afterEach(() => jest.restoreAllMocks());
 test.each(['maya-card', 'maya card', 'mayacard'])('registers independent adapter %s', (slug) => expect(getAdapter({ ...config, slug })).toBeInstanceOf(MayaCardAdapter));
 test('secure transport header, origin, timeout and redirects', () => {
-    const create = jest.spyOn(axios, 'create').mockReturnValue({ get: jest.fn() });
+    const create = jest.spyOn(axios, 'create').mockReturnValue({ get: jest.fn(), interceptors: { request: { use: jest.fn() } } });
     new MayaCardAdapter(config);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'https://maya-card.com', maxRedirects: 0, timeout: 30000, headers: { 'api-token': config.apiToken, Accept: 'application/json' } }));
     expect(JSON.stringify(create.mock.calls[0][0].baseURL)).not.toContain(config.apiToken);

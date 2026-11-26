@@ -49,8 +49,11 @@ test('failed orders report refund only when a wallet transaction proves it', asy
 test('manual wallet credit creates Arabic notice and admin message', async () => {
     const admin = await createAdmin();
     const { customer } = await createCustomerWithGroup({ walletBalance: 5, currency: 'USD' });
-    await walletAdmin.addFunds(customer._id, 12, 'test', admin._id);
+    await walletAdmin.addFunds(customer._id, 12, 'test', admin._id, 'manual-notification-1');
+    await walletAdmin.addFunds(customer._id, 12, 'test', admin._id, 'manual-notification-1');
+    expect(await WalletTransaction.countDocuments({ userId: customer._id })).toBe(1);
     await waitFor(async () => send.mock.calls.length && await Notification.exists({ userId: customer._id }));
+    expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0][0]).toContain('الرصيد بعد العملية: 17 USD');
     expect((await Notification.findOne({ userId: customer._id }).lean()).message).toContain('تمت إضافة 12 USD');
 });

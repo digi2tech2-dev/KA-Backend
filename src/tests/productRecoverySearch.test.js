@@ -2,7 +2,6 @@
 jest.mock('../modules/providers/adapters/adapter.factory', () => ({ getProviderAdapter: jest.fn() }));
 const { getProviderAdapter } = require('../modules/providers/adapters/adapter.factory');
 const { Provider } = require('../modules/providers/provider.model');
-const jwt = require('jsonwebtoken');
 const { connectTestDB, disconnectTestDB, clearCollections, createAdmin, createCustomerWithGroup } = require('./testHelpers');
 const recovery = require('../modules/admin/productRecovery.service');
 beforeAll(connectTestDB);
@@ -85,10 +84,10 @@ test('search HTTP endpoint requires product management authorization', async () 
         const base = `http://127.0.0.1:${server.address().port}/api/admin/product-recovery/search`;
         const admin = await createAdmin();
         const { customer } = await createCustomerWithGroup();
-        const auth = (user) => ({ Authorization: `Bearer ${jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET)}` });
+        const auth = async (user) => ({ Authorization: `Bearer ${await require('../shared/utils/sessionControl').issue(user._id)}` });
         expect((await fetch(base)).status).toBe(401);
-        expect((await fetch(base, { headers: auth(customer) })).status).toBe(403);
-        expect((await fetch(base, { headers: auth(admin) })).status).toBe(200);
-        expect((await fetch(`${base}?page=0`, { headers: auth(admin) })).status).toBe(400);
+        expect((await fetch(base, { headers: await auth(customer) })).status).toBe(403);
+        expect((await fetch(base, { headers: await auth(admin) })).status).toBe(200);
+        expect((await fetch(`${base}?page=0`, { headers: await auth(admin) })).status).toBe(400);
     } finally { await new Promise((resolve) => server.close(resolve)); }
 });

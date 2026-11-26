@@ -11,14 +11,14 @@ const provider = {
     coinRechargeConfig: { product: { name: 'Coins', unitPrice: '0.02', minCoins: 10, maxCoins: 100000, isActive: true } },
 };
 
-const makeClient = () => ({ get: jest.fn(), post: jest.fn() });
+const makeClient = () => ({ get: jest.fn(), post: jest.fn(), interceptors: { request: { use: jest.fn() } } });
 const makeAdapter = () => {
     const http = makeClient();
     axios.create.mockReturnValueOnce(http);
     return { adapter: new CoinRechargeAdapter(provider), http };
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => { jest.clearAllMocks(); axios.create.mockImplementation(makeClient); });
 
 describe('CoinRechargeAdapter', () => {
     it('is registered strictly and exposes one deterministic synthetic product', async () => {

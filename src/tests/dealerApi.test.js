@@ -20,6 +20,7 @@ const makeFakeAxios = (overrides = {}) => ({
     get: overrides.get ?? jest.fn(),
     post: overrides.post ?? jest.fn(),
     interceptors: {
+        request: { use: jest.fn() },
         response: {
             use: jest.fn(),
         },

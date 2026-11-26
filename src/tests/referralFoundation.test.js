@@ -537,7 +537,7 @@ describe('Google profile completion', () => {
         expect(String(fresh.referredBy)).toBe(String(firstReferrer._id));
     });
 
-    it('rejects inactive currency and keeps existing referral immutable', async () => {
+    it('rejects wallet currency edits and keeps existing referral immutable', async () => {
         await seedCurrency({ code: 'USD' });
         await seedCurrency({ code: 'EUR', symbol: 'EUR', name: 'Euro', isActive: false });
         const group = await createGroup({ name: 'InactiveCurrencyGroup', percentage: 0 });
@@ -564,7 +564,7 @@ describe('Google profile completion', () => {
         await expect(userService.updateMyProfile(googleUser._id, {
             country: 'US',
             currency: 'EUR',
-        })).rejects.toMatchObject({ code: 'CURRENCY_INACTIVE' });
+        })).rejects.toMatchObject({ code: 'CUSTOMER_CURRENCY_CHANGE_DISABLED' });
 
         await expect(userService.updateMyProfile(googleUser._id, {
             referralCode: otherReferrer.referralCode,

@@ -24,7 +24,7 @@ beforeEach(async () => { await clearCollections(); await Currency.create({ code:
 afterEach(() => jest.restoreAllMocks());
 const fixture = async (payload = raw()) => {
     const provider = await Provider.create(providerData);
-    const client = { get: jest.fn().mockResolvedValue({ data: [payload] }) };
+    const client = { get: jest.fn().mockResolvedValue({ data: [payload] }), interceptors: { request: { use: jest.fn() } } };
     await syncProviderProducts(provider.id, { httpClient: client });
     const pp = await ProviderProduct.findOne({ provider: provider.id });
     const product = await createProduct({ provider: provider.id, providerProduct: pp.id, basePrice: '1', minQty: pp.minQty, maxQty: pp.maxQty });
@@ -167,10 +167,9 @@ test('UUID recovery remains on the original provider when the product is relinke
 test.each(['/api/providers', '/api/admin/providers'])('HTTP CRUD never exposes credential via %s', async (path) => {
     const { createAdmin } = require('./testHelpers');
     const admin = await createAdmin();
-    const jwt = require('jsonwebtoken');
     const server = require('../app').listen(0);
     await new Promise((resolve) => server.once('listening', resolve));
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ id: admin.id }, process.env.JWT_SECRET)}` };
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${await require('../shared/utils/sessionControl').issue(admin._id)}` };
     const call = async (suffix = '', method = 'GET', body) => {
         const response = await fetch(`http://127.0.0.1:${server.address().port}${path}${suffix}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
         const json = await response.json();
@@ -214,7 +213,7 @@ test.each([['completed', 'COMPLETED', 99], ['rejected', 'FAILED', 100]])('admin 
     const f = await fixture(); const order = await paidOrder(f);
     const { createAdmin } = require('./testHelpers'); const admin = await createAdmin();
     const server = require('../app').listen(0); await new Promise((resolve) => server.once('listening', resolve));
-    const token = require('jsonwebtoken').sign({ id: admin.id }, process.env.JWT_SECRET);
+    const token = await require('../shared/utils/sessionControl').issue(admin._id);
     f.client.get.mockClear();
     try {
         const response = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/orders/${order.id}/status`, {
