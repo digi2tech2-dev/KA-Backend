@@ -109,6 +109,7 @@ const googleCallback = catchAsync(async (req, res) => {
 
     const code = await require('../../shared/utils/oauthHandoff').store(req, req.user);
     res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cache-Control', 'no-store');
     res.redirect(`${frontendBase}/auth?status=OAUTH_HANDOFF&code=${encodeURIComponent(code)}`);
 });
 

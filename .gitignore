@@ -1,5 +1,11 @@
 node_modules/
 .env
+.env.*
+!.env.example
+.tmp/
+tmp/
+uploads/
+coverage/
 
 # Firebase service-account credentials (never commit)
 service-account*.json

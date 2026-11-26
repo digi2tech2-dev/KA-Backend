@@ -5,6 +5,9 @@ const bcrypt = require('bcryptjs');
 const config = require('../../config/config');
 const { generateReferralCode } = require('../../shared/utils/referralCode');
 const { buildPublicWalletSummary, buildWalletSummary } = require('../../shared/utils/walletSummary');
+const { getNextSequence } = require('../orders/counter.model');
+
+const publicUserId = (user) => user.userNumber ?? user._id?.toString();
 
 /**
  * User roles enum — single source of truth.
@@ -41,6 +44,16 @@ const RESELLER_STATUS = Object.freeze({
 
 const userSchema = new mongoose.Schema(
     {
+        // Customer-facing ID. ObjectId remains the key for financial relations.
+        userNumber: {
+            type: Number,
+            immutable: true,
+            unique: true,
+            sparse: true,
+            min: 100,
+            validate: { validator: Number.isSafeInteger, message: 'userNumber must be a safe integer' },
+        },
+
         name: {
             type: String,
             required: [true, 'Name is required'],
@@ -434,7 +447,10 @@ const userSchema = new mongoose.Schema(
     },
     {
         timestamps: true,
-        toJSON: { virtuals: true },
+        toJSON: { virtuals: true, transform: (_doc, result) => {
+            result.id = publicUserId(result);
+            return result;
+        } },
         toObject: { virtuals: true },
     }
 );
@@ -520,6 +536,35 @@ userSchema.pre('save', async function (next) {
     next();
 });
 
+// Allocate after validation/password hashing. All registration paths (including
+// Google and admin-created customers) use save/create and share this counter.
+// The atomic counter is independent of customer count, so deletion never reuses IDs.
+userSchema.pre('save', async function () {
+    if (!this.isNew || this.$locals.userNumberAssigned) return;
+    if (this.role !== ROLES.CUSTOMER) {
+        this.userNumber = undefined;
+        return;
+    }
+    const number = await getNextSequence('customerUserNumber', 99);
+    if (!Number.isSafeInteger(number)) throw new Error('Customer ID sequence exhausted');
+    this.userNumber = number;
+    this.$locals.userNumberAssigned = true;
+});
+
+// insertMany bypasses save hooks. Allocate here as well for explicit bulk imports.
+userSchema.pre('insertMany', async function (next, users) {
+    try {
+        for (const user of users) {
+            if ((user.role ?? ROLES.CUSTOMER) === ROLES.CUSTOMER) {
+                const number = await getNextSequence('customerUserNumber', 99);
+                if (!Number.isSafeInteger(number)) throw new Error('Customer ID sequence exhausted');
+                user.userNumber = number;
+            } else user.userNumber = undefined;
+        }
+        next();
+    } catch (error) { next(error); }
+});
+
 userSchema.pre('findOneAndUpdate', async function (next) {
     const update = this.getUpdate() || {};
     const nextToken = update.apiToken ?? update.$set?.apiToken;
@@ -550,6 +595,7 @@ userSchema.methods.compareApiToken = async function (candidateToken) {
  */
 userSchema.methods.toSafeObject = function () {
     const obj = this.toObject();
+    obj.id = publicUserId(obj);
     const walletSummary = buildPublicWalletSummary(obj);
     Object.assign(obj, {
         walletBalance: walletSummary.walletBalance,
@@ -566,6 +612,8 @@ userSchema.methods.toSafeObject = function () {
     delete obj.twoFactorOtpExpires;
     delete obj.profileCompletionToken;
     delete obj.profileCompletionTokenExpires;
+    delete obj.apiTokenLookupHash;
+    delete obj.apiTokenLookupHash;
     delete obj.apiToken;
     delete obj.apiSecret;
     return obj;

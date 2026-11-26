@@ -10,6 +10,7 @@ const requirePermission = require('../../shared/middlewares/requirePermission');
 const { createUpload } = require('../../shared/middlewares/upload');
 
 const avatarUpload = createUpload('avatars');
+const resolveUserNumber = require('../../shared/middlewares/resolveUserNumber');
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get('/', authorize('ADMIN', 'SUPERVISOR'), requirePermission('VIEW_USERS'
  * @desc   Get user by ID
  * @access Admin
  */
-router.get('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('VIEW_USERS'), userController.getUser);
+router.get('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('VIEW_USERS'), resolveUserNumber(), userController.getUser);
 
 // ── Admin: General Update ─────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ router.get('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('VIEW_USE
  * @access Admin
  * @note   Activation lifecycle is handled via /approve and /reject endpoints
  */
-router.patch('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), updateUserValidation, validate, userController.updateUser);
+router.patch('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), resolveUserNumber(), updateUserValidation, validate, userController.updateUser);
 
 // ── Admin: Activation Lifecycle ───────────────────────────────────────────────
 
@@ -73,14 +74,14 @@ router.patch('/:id', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE
  * @desc   Approve account (PENDING or REJECTED → ACTIVE)
  * @access Admin
  */
-router.patch('/:id/approve', authorize('ADMIN', 'SUPERVISOR'), requirePermission('CONFIRM_ACCOUNTS'), userController.approveUser);
+router.patch('/:id/approve', authorize('ADMIN', 'SUPERVISOR'), requirePermission('CONFIRM_ACCOUNTS'), resolveUserNumber(), userController.approveUser);
 
 /**
  * @route  PATCH /api/users/:id/reject
  * @desc   Reject account (PENDING or ACTIVE → REJECTED)
  * @access Admin
  */
-router.patch('/:id/reject', authorize('ADMIN', 'SUPERVISOR'), requirePermission('CONFIRM_ACCOUNTS'), userController.rejectUser);
+router.patch('/:id/reject', authorize('ADMIN', 'SUPERVISOR'), requirePermission('CONFIRM_ACCOUNTS'), resolveUserNumber(), userController.rejectUser);
 
 // ── Admin: Quantity-Only Billing ─────────────────────────────────────────────
 
@@ -89,13 +90,13 @@ router.patch('/:id/reject', authorize('ADMIN', 'SUPERVISOR'), requirePermission(
  * @desc   Reset quantityUsed to 0 after offline settlement
  * @access Admin
  */
-router.post('/:id/reset-quantity', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), userController.resetQuantity);
+router.post('/:id/reset-quantity', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), resolveUserNumber(), userController.resetQuantity);
 
 /**
  * @route  PATCH /api/users/:id/quantity-limit
  * @desc   Update quantityLimit for a user
  * @access Admin
  */
-router.patch('/:id/quantity-limit', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), userController.updateQuantityLimit);
+router.patch('/:id/quantity-limit', authorize('ADMIN', 'SUPERVISOR'), requirePermission('MANAGE_USERS'), resolveUserNumber(), userController.updateQuantityLimit);
 
 module.exports = router;

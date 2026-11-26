@@ -88,6 +88,8 @@ const getProfile = catchAsync(async (req, res) => {
 
     sendSuccess(res, {
         _id: user._id,
+        id: user.userNumber ?? user._id.toString(),
+        userNumber: user.userNumber,
         name: user.name,
         email: user.email,
         role: user.role,

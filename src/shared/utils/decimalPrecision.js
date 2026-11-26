@@ -63,7 +63,8 @@ const normalizeProviderDecimalPrice = (value) => {
         if (raw === null || raw === undefined || raw === '') return '0';
         const decimal = new Decimal(raw);
         if (!decimal.isFinite() || decimal.isNegative()) return '0';
-        return toStr(decimal);
+        // Source prices are data, not calculated amounts: never round them.
+        return decimal.toFixed();
     } catch {
         return '0';
     }

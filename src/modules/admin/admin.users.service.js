@@ -32,7 +32,7 @@ const _findOrFail = async (id) => {
     return user;
 };
 
-const USER_LIST_SORT_FIELDS = new Set(['createdAt', 'walletBalance', 'name', 'email', 'status', 'role']);
+const USER_LIST_SORT_FIELDS = new Set(['createdAt', 'userNumber', 'walletBalance', 'name', 'email', 'status', 'role']);
 
 // ─── List ──────────────────────────────────────────────────────────────────────
 
@@ -92,6 +92,9 @@ const listUsers = async ({
                 { email: { $regex: require('../../shared/utils/literalSearch')(term), $options: 'i' } },
                 { username: { $regex: require('../../shared/utils/literalSearch')(term), $options: 'i' } },
             ];
+            if (/^\d+$/.test(term) && Number.isSafeInteger(Number(term))) {
+                filter.$or.push({ userNumber: Number(term) });
+            }
         }
     }
     if (from || to) {
@@ -444,6 +447,7 @@ const resetUserPassword = async (id, newPassword, adminId) => {
     // Need to select password field explicitly since it has select: false
     const user = await User.findById(id).select('+password');
     if (!user) throw new NotFoundError('User');
+    await require('../../shared/utils/accountTarget')(adminId, user);
 
     await require('../../shared/utils/accountTarget')(adminId, user);
 

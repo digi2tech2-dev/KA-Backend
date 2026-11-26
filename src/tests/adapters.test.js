@@ -168,7 +168,7 @@ describe('[1] TorosfonAdapter — getProducts()', () => {
         const { adapter, client } = makeTorosAdapter();
         client.get.mockResolvedValueOnce({ data: [] });
         await adapter.getProducts();
-        expect(client.get).toHaveBeenCalledWith('/api/AllProducts');
+        expect(client.get).toHaveBeenCalledWith('/api/AllProducts', expect.objectContaining({ transformResponse: [expect.any(Function)] }));
     });
 });
 
@@ -360,7 +360,7 @@ describe('[4] AlkasrVipAdapter — getProducts()', () => {
         const { adapter, client } = makeAlkasrAdapter();
         client.get.mockResolvedValueOnce({ data: [] });
         await adapter.getProducts();
-        expect(client.get).toHaveBeenCalledWith('/client/api/products');
+        expect(client.get).toHaveBeenCalledWith('/client/api/products', expect.objectContaining({ transformResponse: [expect.any(Function)] }));
     });
 });
 

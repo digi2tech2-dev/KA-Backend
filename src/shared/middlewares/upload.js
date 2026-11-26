@@ -29,7 +29,7 @@ const { BusinessRuleError } = require('../errors/AppError');
 
 const UPLOADS_ROOT = path.join(__dirname, '..', '..', '..', 'uploads');
 
-/** Max file size: 20 MB */
+/** Max file size: 5 MB */
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 /**

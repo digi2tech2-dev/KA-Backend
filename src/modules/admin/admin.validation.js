@@ -103,7 +103,7 @@ const listUsersQuery = Joi.object({
     role: Joi.string().valid('ADMIN', 'SUPERVISOR', 'CUSTOMER'),
     from: Joi.date().iso(),
     to: Joi.date().iso().min(Joi.ref('from')),
-    sortBy: Joi.string().valid('createdAt', 'walletBalance', 'name', 'email', 'status', 'role').default('createdAt'),
+    sortBy: Joi.string().valid('createdAt', 'userNumber', 'walletBalance', 'name', 'email', 'status', 'role').default('createdAt'),
     sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
 });
 

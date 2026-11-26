@@ -23,18 +23,26 @@ beforeEach(async()=>{
 });
 afterEach(()=>jest.restoreAllMocks());
 afterAll(async()=>{await new Promise(resolve=>server.close(resolve));await mongoose.disconnect();});
-const post=(path,body={},id)=>fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json',...(id?{'x-test-user':String(id)}:{})},body:JSON.stringify(body)});
+const post=(path,body={},id)=>new Promise((resolve,reject)=>{
+    const data=JSON.stringify(body);
+    const request=require('node:http').request(url+path,{method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(data),...(id?{'x-test-user':String(id)}:{})}},response=>{
+        let content='';response.on('data',chunk=>content+=chunk);response.on('end',()=>resolve({status:response.statusCode,json:async()=>JSON.parse(content)}));
+    });request.on('error',reject);request.end(data);
+});
 const begin=async()=>{
     const response=await post('/request');expect(response.status).toBe(200);
     const {data}=await response.json();const otp=sent.at(-1).text.match(/Code: (\d{6})/)[1];
     return {requestId:data.requestId,otp};
 };
 test('Google-only disable requires a distinct emailed proof and consumes it once under concurrency',async()=>{
+    const priorVersion=String((await User.findById(user._id)).sessionVersion||'0');
     const proof=await begin();expect((await post('/request')).status).toBe(401);
     expect((await post('/confirm',proof,other._id)).status).toBe(401);
     const responses=await Promise.all([post('/confirm',proof),post('/confirm',proof)]);
     expect(responses.map(r=>r.status).sort()).toEqual([200,401]);
-    expect((await User.findById(user._id)).isTwoFactorEnabled).toBe(false);
+    const updated=await User.findById(user._id);
+    expect(updated.isTwoFactorEnabled).toBe(false);
+    expect(String(updated.sessionVersion)).not.toBe(priorVersion);
     expect((await post('/confirm',proof)).status).toBe(401);
 });
 test('five wrong attempts lock even a subsequently correct code',async()=>{

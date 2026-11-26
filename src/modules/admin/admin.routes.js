@@ -118,6 +118,8 @@ const targetValidation = require('../targets/target.validation');
 const notifSvc = require('../notifications/notification.service');
 const notifValidation = require('../notifications/notification.validation');
 
+const resolveUserNumber = require('../../shared/middlewares/resolveUserNumber');
+
 const router = Router();
 const adminOnly = authorize('ADMIN');
 
@@ -181,23 +183,23 @@ router.get('/users/deleted', requirePermission('VIEW_USERS'), usersCtrl.listDele
 router.get('/users/:id/products', requirePermission('VIEW_USERS'), usersCtrl.listUserProducts);
 router.patch('/users/:id/products/:productId', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUserProductOverride), usersCtrl.updateUserProductOverride);
 router.post('/users/adjust-debt', adminOnly, walletLimiter, validateBody(schemas.debtAdjustment), walletCtrl.adjustDebt);
-router.get('/users/:id', requirePermission('VIEW_USERS'), usersCtrl.getUserById);
-router.patch('/users/:id', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUser), usersCtrl.updateUser);
-router.delete('/users/:id', requirePermission('MANAGE_USERS'), usersCtrl.deleteUser);
+router.get('/users/:id', requirePermission('VIEW_USERS'), resolveUserNumber('id'), usersCtrl.getUserById);
+router.patch('/users/:id', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.updateUser), usersCtrl.updateUser);
+router.delete('/users/:id', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), usersCtrl.deleteUser);
 // approve / reject / restore — specific actions must come BEFORE /:id pattern
-router.patch('/users/:id/approve', requirePermission('CONFIRM_ACCOUNTS'), usersCtrl.approveUser);
-router.patch('/users/:id/reject', requirePermission('CONFIRM_ACCOUNTS'), usersCtrl.rejectUser);
-router.patch('/users/:id/restore', requirePermission('MANAGE_USERS'), usersCtrl.restoreUser);
+router.patch('/users/:id/approve', requirePermission('CONFIRM_ACCOUNTS'), resolveUserNumber('id'), usersCtrl.approveUser);
+router.patch('/users/:id/reject', requirePermission('CONFIRM_ACCOUNTS'), resolveUserNumber('id'), usersCtrl.rejectUser);
+router.patch('/users/:id/restore', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), usersCtrl.restoreUser);
 // Phase 4 gap-bridged routes
-router.patch('/users/:id/role', adminOnly, validateBody(schemas.updateUserRole), usersCtrl.updateUserRole);
-router.patch('/users/:id/currency', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUserCurrency), usersCtrl.updateUserCurrency);
-router.patch('/users/:id/credit-limit', requirePermission('MANAGE_USERS'), validateBody(schemas.updateCreditLimit), usersCtrl.updateUserCreditLimit);
-router.get('/users/:id/quota', requirePermission('MANAGE_USERS'), usersCtrl.getUserQuota);
-router.patch('/users/:id/quota', requirePermission('MANAGE_USERS'), validateBody(schemas.updateUserQuota), usersCtrl.updateUserQuota);
-router.post('/users/:id/quota/reset', requirePermission('MANAGE_USERS'), validateBody(schemas.resetUserQuota), usersCtrl.resetUserQuota);
-router.post('/users/:id/reset-password', requirePermission('MANAGE_USERS'), validateBody(schemas.resetUserPassword), usersCtrl.resetUserPassword);
-router.patch('/users/:id/avatar', requirePermission('MANAGE_USERS'), avatarUpload.single('avatar'), usersCtrl.updateUserAvatar);
-router.patch('/users/:id/permissions', adminOnly, validateBody(schemas.updateUserPermissions), usersCtrl.updateUserPermissions);
+router.patch('/users/:id/role', adminOnly, resolveUserNumber('id'), validateBody(schemas.updateUserRole), usersCtrl.updateUserRole);
+router.patch('/users/:id/currency', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.updateUserCurrency), usersCtrl.updateUserCurrency);
+router.patch('/users/:id/credit-limit', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.updateCreditLimit), usersCtrl.updateUserCreditLimit);
+router.get('/users/:id/quota', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), usersCtrl.getUserQuota);
+router.patch('/users/:id/quota', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.updateUserQuota), usersCtrl.updateUserQuota);
+router.post('/users/:id/quota/reset', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.resetUserQuota), usersCtrl.resetUserQuota);
+router.post('/users/:id/reset-password', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), validateBody(schemas.resetUserPassword), usersCtrl.resetUserPassword);
+router.patch('/users/:id/avatar', requirePermission('MANAGE_USERS'), resolveUserNumber('id'), avatarUpload.single('avatar'), usersCtrl.updateUserAvatar);
+router.patch('/users/:id/permissions', adminOnly, resolveUserNumber('id'), validateBody(schemas.updateUserPermissions), usersCtrl.updateUserPermissions);
 router.get('/referrals/agents', adminOnly, validateQuery(schemas.listReferralAgentsQuery), catchAsync(async (req, res) => {
     const result = await referralDashboardSvc.listAdminReferralAgents(req.query);
     return res.status(200).json({
@@ -209,7 +211,7 @@ router.get('/referrals/agents', adminOnly, validateQuery(schemas.listReferralAge
         settingKey: result.settingKey,
     });
 }));
-router.patch('/referrals/agents/:userId/commission', adminOnly, validateBody(schemas.updateReferralCommissionOverride), catchAsync(async (req, res) => {
+router.patch('/referrals/agents/:userId/commission', adminOnly, resolveUserNumber('userId'), validateBody(schemas.updateReferralCommissionOverride), catchAsync(async (req, res) => {
     const result = await referralCommissionSvc.setReferralCommissionOverride({
         userId: req.params.userId,
         percent: req.body.percent,
@@ -289,7 +291,7 @@ router.delete('/providers/:id', adminOnly, requirePermission('MANAGE_SUPPLIERS')
 // ORDERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get('/orders', requirePermission('MANAGE_ORDERS'), validateQuery(schemas.listOrdersQuery), ordersCtrl.listOrders);
+router.get('/orders', requirePermission('MANAGE_ORDERS'), resolveUserNumber('userId', 'query'), validateQuery(schemas.listOrdersQuery), ordersCtrl.listOrders);
 router.post('/orders/:id/retry', requirePermission('CONFIRM_ORDERS'), ordersCtrl.retryOrder);
 router.post('/orders/:id/refund', requirePermission('CONFIRM_ORDERS'), ordersCtrl.refundOrder);
 router.post('/orders/:id/sync-status', requirePermission('CONFIRM_ORDERS'), ordersCtrl.syncOrderProviderStatus);
@@ -302,11 +304,11 @@ router.get('/orders/:id', requirePermission('MANAGE_ORDERS'), ordersCtrl.getOrde
 // ═══════════════════════════════════════════════════════════════════════════════
 
 router.get('/wallets', requirePermission('MANAGE_WALLET'), walletCtrl.listWallets);
-router.get('/wallets/:userId/transactions', requirePermission('MANAGE_WALLET'), walletCtrl.getTransactionHistory);
-router.post('/wallets/:userId/add', requirePermission('MANAGE_WALLET'), walletLimiter, validateBody(schemas.walletAdjustment), walletCtrl.addFunds);
-router.post('/wallets/:userId/deduct', requirePermission('MANAGE_WALLET'), walletLimiter, validateBody(schemas.walletAdjustment), walletCtrl.deductFunds);
-router.put('/wallets/:userId/set', requirePermission('MANAGE_WALLET'), walletLimiter, validateBody(schemas.walletSetBalance), walletCtrl.setBalance);
-router.get('/wallets/:userId', requirePermission('MANAGE_WALLET'), walletCtrl.getWallet);
+router.get('/wallets/:userId/transactions', requirePermission('MANAGE_WALLET'), resolveUserNumber('userId'), walletCtrl.getTransactionHistory);
+router.post('/wallets/:userId/add', requirePermission('MANAGE_WALLET'), resolveUserNumber('userId'), walletLimiter, validateBody(schemas.walletAdjustment), walletCtrl.addFunds);
+router.post('/wallets/:userId/deduct', requirePermission('MANAGE_WALLET'), resolveUserNumber('userId'), walletLimiter, validateBody(schemas.walletAdjustment), walletCtrl.deductFunds);
+router.put('/wallets/:userId/set', requirePermission('MANAGE_WALLET'), resolveUserNumber('userId'), walletLimiter, validateBody(schemas.walletSetBalance), walletCtrl.setBalance);
+router.get('/wallets/:userId', requirePermission('MANAGE_WALLET'), resolveUserNumber('userId'), walletCtrl.getWallet);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CATEGORIES  (Phase 4b gap-bridged module)
@@ -664,7 +666,7 @@ router.get('/notifications', adminOnly, notifValidation.validateQuery(notifValid
     });
 }));
 
-router.post('/notifications/send', adminOnly, notifValidation.validateBody(notifValidation.schemas.adminSendNotification), catchAsync(async (req, res) => {
+router.post('/notifications/send', adminOnly, resolveUserNumber('userId', 'body'), notifValidation.validateBody(notifValidation.schemas.adminSendNotification), catchAsync(async (req, res) => {
     const result = await notifSvc.adminSendNotification(req.body);
     sendSuccess(res, result, `Notification sent successfully (${result.mode}, ${result.sent} recipient(s)).`);
 }));

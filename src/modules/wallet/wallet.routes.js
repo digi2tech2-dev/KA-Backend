@@ -7,6 +7,8 @@ const authorize = require('../../shared/middlewares/authorize');
 const requirePermission = require('../../shared/middlewares/requirePermission');
 const requireActiveUser = require('../../shared/middlewares/requireActiveUser');
 
+const resolveUserNumber = require('../../shared/middlewares/resolveUserNumber');
+
 const router = Router();
 
 /**
@@ -33,6 +35,7 @@ router.get(
     authenticate,
     requireActiveUser,
     authorize('ADMIN', 'SUPERVISOR'),
+    resolveUserNumber('userId'),
     requirePermission('MANAGE_WALLET'),
     walletController.getUserTransactions
 );

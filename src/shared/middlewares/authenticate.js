@@ -43,6 +43,7 @@ const authenticate = catchAsync(async (req, res, next) => {
         throw new AuthenticationError('The user belonging to this token no longer exists.');
     }
 
+    require('../utils/sessionControl').validate(decoded, currentUser);
     // 4. Status gate — only ACTIVE users can use authenticated routes
     require('../utils/sessionControl').validate(decoded, currentUser);
     if (currentUser.status !== USER_STATUS.ACTIVE) {

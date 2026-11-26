@@ -1,6 +1,7 @@
 'use strict';
 
 const axios = require('axios');
+const { providerCatalogRequest } = require('./providerCatalogJson');
 const { BaseProviderAdapter } = require('./base.adapter');
 const { Currency } = require('../../currency/currency.model');
 const { BusinessRuleError } = require('../../../shared/errors/AppError');
@@ -26,7 +27,9 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
     }
 
     async _get(path, params) {
-        const { data } = await this._client.get(`/client/api${path}`, params ? { params } : undefined);
+        const config = path === '/products' ? { ...providerCatalogRequest, ...(params ? { params } : {}) }
+            : params ? { params } : undefined;
+        const { data } = await this._client.get(`/client/api${path}`, config);
         if (String(data?.status).toUpperCase() === 'ERROR') {
             const error = new BusinessRuleError(
                 `[BrandOneCard] ${data.msg || data.detail || 'Provider request rejected'} (code ${data.code})`,
@@ -97,7 +100,7 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
             return [this._validateDTO({
                 externalProductId: String(product.id ?? ''),
                 rawName: String(product.name || 'Unknown'),
-                rawPrice: toStr(price.div(rates.get(code))),
+                rawPrice: rates.get(code).eq(1) ? price.toFixed() : toStr(price.div(rates.get(code))),
                 minQty: isPackage || qty == null ? 1 : Number(qty.min),
                 maxQty: isPackage || qty == null ? 1 : Number(qty.max),
                 isActive: ![false, 0, '0', 'false'].includes(product.available),

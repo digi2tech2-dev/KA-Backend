@@ -15,6 +15,7 @@
  */
 
 const axios = require('axios');
+const { providerCatalogRequest } = require('./providerCatalogJson');
 const crypto = require('crypto');
 const { BaseProviderAdapter } = require('./base.adapter');
 
@@ -146,7 +147,7 @@ class IbraAdapter extends BaseProviderAdapter {
      *   [ { id, name, price, ... }, ... ]
      */
     async getProducts() {
-        const { data } = await this._client.get('/client/products');
+        const { data } = await this._client.get('/client/products', providerCatalogRequest);
         const payload = unwrap(data);
         const list = Array.isArray(payload)
             ? payload

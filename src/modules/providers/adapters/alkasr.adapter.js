@@ -49,6 +49,7 @@
  */
 
 const axios = require('axios');
+const { providerCatalogRequest } = require('./providerCatalogJson');
 const crypto = require('crypto');
 const { BaseProviderAdapter } = require('./base.adapter');
 const { extractTargetId } = require('./providerParams.helper');
@@ -157,7 +158,7 @@ class AlkasrVipAdapter extends BaseProviderAdapter {
      * @returns {Promise<ProviderProductDTO[]>}
      */
     async getProducts() {
-        const { data } = await this._client.get('/client/api/products');
+        const { data } = await this._client.get('/client/api/products', providerCatalogRequest);
         const list = Array.isArray(data)
             ? data
             : (data.data ?? data.products ?? data.services ?? []);

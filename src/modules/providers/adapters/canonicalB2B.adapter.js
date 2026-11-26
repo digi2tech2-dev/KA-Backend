@@ -5,6 +5,7 @@
  * complete canonical base (for example https://site.example/client/api).
  */
 const axios = require('axios');
+const { providerCatalogRequest } = require('./providerCatalogJson');
 const { BaseProviderAdapter } = require('./base.adapter');
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -77,7 +78,7 @@ class CanonicalB2BAdapter extends BaseProviderAdapter {
     }
 
     async getProducts() {
-        const { data } = await this._client.get('/products');
+        const { data } = await this._client.get('/products', providerCatalogRequest);
         const products = Array.isArray(data) ? data : (data?.data?.products ?? data?.products ?? []);
         if (!Array.isArray(products)) {
             throw new Error('[CanonicalB2B] GET /products returned an invalid product list');

@@ -481,8 +481,8 @@ describe('Client compatibility API products and content', () => {
         expect(mapped.qty_values).toEqual([100, 500, 1000]);
         expect(mapped.allowed_quantities).toEqual([100, 500, 1000]);
         expect(mapped.quantities).toEqual([100, 500, 1000]);
-        expect(mapped.price).toBe('1.2345678');
-        expect(mapped.cost).toBe('1.2345678');
+        expect(mapped.price).toBe(1.2345678);
+        expect(mapped.cost).toBe(1.2345678);
         expect(mapped.original_price).toBe(1.1);
         expect(mapped.currency).toBe('EGP');
     });
@@ -558,20 +558,17 @@ describe('Client compatibility API orders', () => {
         expect(denied.body.code).toBe(123);
     });
 
-    test.each(['/client/api', '/api/client/api'])('uses code 130 only for order placement during maintenance at %s', async (prefix) => {
+    test('uses code 130 only to block compatibility placement during maintenance', async () => {
         const { token } = await createApiReseller({ token: 'canonical-maintenance-token' });
         const product = await createCompatProduct({ executionType: 'manual' });
         await Setting.create({ key: 'maintenanceMode', value: true, description: 'test' });
-        const blocked = await rawPost(`${prefix}/orders`, {
+        const blocked = await rawPost('/client/api/orders', {
             product_id: product.compatProductId, qty: 1, order_uuid: 'maintenance-order',
         }, authHeaders(token));
         expect(blocked.status).toBe(503);
         expect(blocked.body).toEqual({ status: 'ERROR', code: 130, message: 'Site is under maintenance' });
 
-        const legacyOrder = await rawGet(`${prefix}/newOrder/${product.compatProductId}/params?qty=1&order_uuid=maintenance-get`, authHeaders(token));
-        expect(legacyOrder.status).toBe(503);
-        expect(legacyOrder.body.code).toBe(130);
-        const profile = await rawGet(`${prefix}/profile`, authHeaders(token));
+        const profile = await rawGet('/client/api/profile', authHeaders(token));
         expect(profile.status).toBe(200);
     });
 

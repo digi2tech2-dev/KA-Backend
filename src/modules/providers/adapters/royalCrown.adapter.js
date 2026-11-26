@@ -43,6 +43,7 @@
  */
 
 const axios = require('axios');
+const { providerCatalogRequest } = require('./providerCatalogJson');
 const { BaseProviderAdapter } = require('./base.adapter');
 const { extractTargetId } = require('./providerParams.helper');
 
@@ -141,7 +142,7 @@ class RoyalCrownAdapter extends BaseProviderAdapter {
      * @returns {Promise<ProviderProductDTO[]>}
      */
     async getProducts() {
-        const { data } = await this._client.get('/api/AllProducts');
+        const { data } = await this._client.get('/api/AllProducts', providerCatalogRequest);
         const list = Array.isArray(data)
             ? data
             : (data.data ?? data.products ?? data.services ?? []);
