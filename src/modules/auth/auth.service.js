@@ -40,6 +40,7 @@ const {
 } = require('../../shared/errors/AppError');
 const { createAuditLog } = require('../audit/audit.service');
 const { USER_ACTIONS, ENTITY_TYPES, ACTOR_ROLES } = require('../audit/audit.constants');
+const twoFactorPolicy = require('../../shared/utils/twoFactorPolicy');
 const {
     normalizeIncomingReferralCode,
     resolveReferralOwnerForNewUser,
@@ -319,7 +320,9 @@ const login = async ({ email, password }) => {
     }
 
     // ── Gate 4: Two-Factor Authentication ─────────────────────────────────────
-    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
+    if (twoFactorPolicy.isRequiredFor(user)) {
+        return twoFactorPolicy.startLoginChallenge(user);
+    }
 
     // ── 5. Issue full JWT ──────────────────────────────────────────────────────
     const token = await signToken(user._id, user.role);
@@ -459,7 +462,9 @@ const loginWithGoogle = async (user) => {
         };
     }
 
-    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
+    if (twoFactorPolicy.isRequiredFor(user)) {
+        return twoFactorPolicy.startLoginChallenge(user);
+    }
     const token = await signToken(user._id, user.role);
 
     createAuditLog({
@@ -517,7 +522,9 @@ const completeGoogleProfile = async ({ completionToken, country, currency }) => 
     user.profileCompletionTokenExpires = null;
     await user.save();
 
-    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
+    if (twoFactorPolicy.isRequiredFor(user)) {
+        return twoFactorPolicy.startLoginChallenge(user);
+    }
     const token = await signToken(user._id, user.role);
 
     createAuditLog({
@@ -629,6 +636,9 @@ const enable2FA = async (userId, code) => {
  * @param {{ password?: string }} credentials
  */
 const disable2FA = async (userId, { password } = {}) => {
+    if (twoFactorPolicy.isRequired()) {
+        throw new BusinessRuleError('Two-factor authentication is required by platform policy.', 'TWO_FACTOR_REQUIRED');
+    }
     const user = await User.findById(userId).select('+password');
     if (!user) throw new NotFoundError('User');
 

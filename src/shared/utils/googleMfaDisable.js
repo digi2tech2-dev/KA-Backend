@@ -4,13 +4,14 @@ const mongoose = require('mongoose');
 const config = require('../../config/config');
 const { AuthenticationError } = require('../errors/AppError');
 const { User } = require('../../modules/users/user.model');
+const twoFactorPolicy = require('./twoFactorPolicy');
 const Proof = mongoose.models.GoogleMfaDisableProof || mongoose.model('GoogleMfaDisableProof', new mongoose.Schema({
     _id: mongoose.Schema.Types.ObjectId, requestId: String, codeHash: String, sessionVersion: String,
     attempts: {type:Number,default:0}, nextRequestAt: Date, expiresAt: {type:Date,expires:0},
 }));
 const denied = () => new AuthenticationError('Cannot disable MFA. Use your current password or request a fresh Google-account email code.');
 const hash = (requestId, code) => crypto.createHmac('sha256', config.jwt.secret).update(`disable-google-mfa:${requestId}:${code}`).digest('hex');
-const eligible = user => user && user.googleId && !user.password && user.verified && user.isTwoFactorEnabled && user.status === 'ACTIVE' && !user.deletedAt && !user.blockedAt;
+const eligible = user => !twoFactorPolicy.isRequired() && user && user.googleId && !user.password && user.verified && user.isTwoFactorEnabled && user.status === 'ACTIVE' && !user.deletedAt && !user.blockedAt;
 const request = async (req,res,next) => {
     try {
         const user = await User.findById(req.user._id).select('+password');

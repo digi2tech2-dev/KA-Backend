@@ -308,7 +308,7 @@ const userSchema = new mongoose.Schema(
         /** Whether the user must complete email OTP verification to log in. */
         isTwoFactorEnabled: {
             type: Boolean,
-            default: false,
+            default: process.env.NODE_ENV !== 'test',
         },
 
         // ── Wallet ───────────────────────────────────────────────────────────

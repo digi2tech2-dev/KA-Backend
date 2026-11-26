@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/scripts/seed.js",
     "seed:clear": "node src/scripts/seed.js --clear",
+    "security:enable-2fa": "node src/scripts/enableTwoFactorForAllUsers.js",
     "test": "jest --runInBand --forceExit"
   },
   "keywords": [
