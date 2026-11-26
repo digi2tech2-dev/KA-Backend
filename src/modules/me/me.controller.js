@@ -154,6 +154,7 @@ const updateApiSettings = catchAsync(async (req, res) => {
     const webhookUrl = String(req.body.webhookUrl || '').trim();
 
     user.whitelistIps = [...new Set(whitelistIps)];
+    if (webhookUrl) require('../../shared/utils/safeProviderHttp').parseDestination(webhookUrl);
     user.webhookUrl = webhookUrl || null;
     await user.save();
 
@@ -275,6 +276,7 @@ const uploadOrderFieldImage = catchAsync(async (req, res) => {
     }
 
     const relativePath = `/uploads/order-fields/${req.file.filename}`;
+    await require('../../shared/middlewares/privateUploadAccess').recordUpload(relativePath, req.user._id);
     sendCreated(res, { path: relativePath, url: relativePath }, 'Image uploaded successfully.');
 });
 
@@ -357,8 +359,8 @@ const getProducts = catchAsync(async (req, res) => {
     if (hiddenIds.length) filter._id = { $nin: hiddenIds };
     if (req.query.search) {
         filter.$or = [
-            { name: { $regex: req.query.search, $options: 'i' } },
-            { description: { $regex: req.query.search, $options: 'i' } },
+            { name: { $regex: require('../../shared/utils/literalSearch')(req.query.search), $options: 'i' } },
+            { description: { $regex: require('../../shared/utils/literalSearch')(req.query.search), $options: 'i' } },
         ];
     }
 
@@ -390,7 +392,7 @@ const getProducts = catchAsync(async (req, res) => {
         const markedUpUSD = override?.priceOverride ?? calculateFinalPrice(p.basePrice, markupPercentage);
         const showAccountNumber = Boolean(p.showAccountNumber);
         return {
-            ...p,
+            ...require('../../shared/utils/customerProduct')(p, markedUpUSD),
             showAccountNumber,
             displayAccountNumber: showAccountNumber ? (p.displayAccountNumber || null) : null,
             markedUpPriceUSD: markedUpUSD,
@@ -437,7 +439,7 @@ const getProduct = catchAsync(async (req, res) => {
     const showAccountNumber = Boolean(product.showAccountNumber);
 
     sendSuccess(res, {
-        ...product,
+        ...require('../../shared/utils/customerProduct')(product, markedUpUSD),
         showAccountNumber,
         displayAccountNumber: showAccountNumber ? (product.displayAccountNumber || null) : null,
         markedUpPriceUSD: markedUpUSD,

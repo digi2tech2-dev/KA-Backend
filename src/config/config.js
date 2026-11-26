@@ -126,4 +126,8 @@ if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 }
 
+if (config.env === 'production' && Buffer.byteLength(String(config.jwt.secret || '')) < 32) {
+    throw new Error('JWT secret must contain at least 32 bytes in production.');
+}
+
 module.exports = config;

@@ -28,6 +28,11 @@ const requirePermission = (permissionName) => (req, res, next) => {
         return next();
     }
 
+    if (permissionName === 'MANAGE_SUPPLIERS' && !['GET', 'HEAD'].includes(req.method)
+        && ['baseUrl', 'apiToken', 'apiKey', 'adapterType'].some(key => Object.hasOwn(req.body || {}, key))) {
+        throw new AuthorizationError('Supplier destinations and credentials require an administrator.');
+    }
+
     // Check user-level permissions array
     if (req.user.permissions && req.user.permissions.includes(permissionName)) {
         return next();

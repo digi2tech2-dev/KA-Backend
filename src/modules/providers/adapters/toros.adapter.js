@@ -74,7 +74,7 @@ const _normaliseTorosStatus = (status) => {
 // ─── HTTP client factory ──────────────────────────────────────────────────────
 
 const _buildClient = (baseURL, token, timeoutMs = DEFAULT_TIMEOUT_MS) => {
-    const client = axios.create({
+    const client = require('../../../shared/utils/safeProviderHttp').create({
         baseURL,
         timeout: timeoutMs,
         headers: {

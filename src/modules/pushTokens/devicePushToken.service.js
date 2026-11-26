@@ -1,14 +1,17 @@
 'use strict';
 
 const { DevicePushToken, ANDROID_APP_ID } = require('./devicePushToken.model');
+const { ConflictError } = require('../../shared/errors/AppError');
 
 const normalizeToken = (value) => String(value || '').trim();
 
 const registerPushToken = async ({ userId, token, platform }) => {
     const normalizedToken = normalizeToken(token);
     const now = new Date();
-    const device = await DevicePushToken.findOneAndUpdate(
-        { token: normalizedToken },
+    let device;
+    try {
+    device = await DevicePushToken.findOneAndUpdate(
+        { token: normalizedToken, $or: [{ userId }, { isActive: false }] },
         {
             $set: {
                 userId,
@@ -21,6 +24,10 @@ const registerPushToken = async ({ userId, token, platform }) => {
         },
         { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+    } catch (error) {
+        if (error.code === 11000) throw new ConflictError('Push token belongs to another active account. Unregister it first.');
+        throw error;
+    }
 
     return {
         id: device._id,

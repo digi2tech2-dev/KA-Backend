@@ -53,10 +53,7 @@ const TWO_FACTOR_OTP_EXPIRY_MS = 5 * 60 * 1000;
 const PROFILE_COMPLETION_EXPIRY_MS = 15 * 60 * 1000;
 
 /** Sign full-session JWT for a user. */
-const signToken = (userId, role) =>
-    jwt.sign({ id: userId, role }, config.jwt.secret, {
-        expiresIn: config.jwt.expiresIn,
-    });
+const signToken = (userId, role, mfaVerified = false) => require('../../shared/utils/sessionControl').issue(userId, {}, mfaVerified);
 
 /**
  * Sign a short-lived temporary JWT for 2FA-pending sessions.
@@ -322,30 +319,10 @@ const login = async ({ email, password }) => {
     }
 
     // ── Gate 4: Two-Factor Authentication ─────────────────────────────────────
-    if (user.isTwoFactorEnabled) {
-        const plainOtp = _generateTwoFactorOtp();
-        const tempToken = signTempToken(user._id);
-
-        user.twoFactorOtp = _hashOtp(plainOtp);
-        user.twoFactorOtpExpires = new Date(Date.now() + TWO_FACTOR_OTP_EXPIRY_MS);
-        await user.save();
-
-        await emailService.sendTwoFactorOtpEmail(user, plainOtp);
-
-        createAuditLog({
-            actorId: user._id,
-            actorRole: ACTOR_ROLES[user.role] ?? user.role,
-            action: USER_ACTIONS.LOGIN_SUCCESS,
-            entityType: ENTITY_TYPES.USER,
-            entityId: user._id,
-            metadata: { email: user.email, twoFactorPending: true },
-        });
-
-        return { requires2FA: true, tempToken, email: user.email };
-    }
+    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
 
     // ── 5. Issue full JWT ──────────────────────────────────────────────────────
-    const token = signToken(user._id, user.role);
+    const token = await signToken(user._id, user.role);
 
     createAuditLog({
         actorId: user._id,
@@ -482,7 +459,8 @@ const loginWithGoogle = async (user) => {
         };
     }
 
-    const token = signToken(user._id, user.role);
+    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
+    const token = await signToken(user._id, user.role);
 
     createAuditLog({
         actorId: user._id,
@@ -531,6 +509,7 @@ const completeGoogleProfile = async ({ completionToken, country, currency }) => 
         throw new AppError('Country is required.', 400, 'COUNTRY_INVALID');
     }
 
+    await require('../../shared/utils/onboardingCurrency')(user, currency);
     user.currency = await _normalizeCurrency(currency, { required: true });
 
     user.profileCompletedAt = new Date();
@@ -538,7 +517,8 @@ const completeGoogleProfile = async ({ completionToken, country, currency }) => 
     user.profileCompletionTokenExpires = null;
     await user.save();
 
-    const token = signToken(user._id, user.role);
+    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
+    const token = await signToken(user._id, user.role);
 
     createAuditLog({
         actorId: user._id,
@@ -699,68 +679,10 @@ const disable2FA = async (userId, { password } = {}) => {
  * @returns {{ token: string, user: Object }}
  */
 const verify2FA = async (tempToken, code) => {
-    // 1. Verify the temp token
-    let decoded;
-    try {
-        decoded = jwt.verify(tempToken, config.jwt.secret);
-    } catch (err) {
-        if (err.name === 'TokenExpiredError') {
-            throw new AuthenticationError(
-                '2FA verification has expired. Please log in again.'
-            );
-        }
-        throw new AuthenticationError('Invalid temporary token.');
-    }
-
-    // Must be a 2FA-pending token
-    if (decoded.purpose !== '2fa-pending') {
-        throw new AuthenticationError('Invalid temporary token.');
-    }
-
-    // 2. Load user + pending email OTP
-    const user = await User.findById(decoded.id).select('+twoFactorOtp +twoFactorOtpExpires');
-    if (!user) {
-        throw new AuthenticationError('The user belonging to this token no longer exists.');
-    }
-
-    if (user.status !== USER_STATUS.ACTIVE) {
-        throw new AuthenticationError('Your account is not active. Contact an administrator.');
-    }
-
-    if (!user.isTwoFactorEnabled) {
-        throw new AuthenticationError('2FA is not enabled for this account.');
-    }
-
-    if (
-        !user.twoFactorOtp ||
-        !user.twoFactorOtpExpires ||
-        user.twoFactorOtpExpires.getTime() <= Date.now()
-    ) {
-        user.twoFactorOtp = null;
-        user.twoFactorOtpExpires = null;
-        await user.save();
-
-        throw new AuthenticationError(
-            '2FA verification has expired. Please log in again.'
-        );
-    }
-
-    // 3. Verify email OTP code
-    const isValid = _safeCompareHash(
-        _hashOtp(String(code).trim()),
-        user.twoFactorOtp
-    );
-
-    if (!isValid) {
-        throw new AuthenticationError('Invalid 2FA code. Please try again.');
-    }
-
-    user.twoFactorOtp = null;
-    user.twoFactorOtpExpires = null;
-    await user.save();
+    const user = await require('../../shared/utils/sessionControl').exchange(tempToken, code);
 
     // 4. Issue full JWT
-    const fullToken = signToken(user._id, user.role);
+    const fullToken = await signToken(user._id, user.role, true);
 
     createAuditLog({
         actorId: user._id,
@@ -776,7 +698,7 @@ const verify2FA = async (tempToken, code) => {
 
 module.exports = {
     register,
-    login,
+    login: require('../../shared/utils/accountLoginLimit').guard(login),
     verifyEmail,
     resendVerification,
     loginWithGoogle,

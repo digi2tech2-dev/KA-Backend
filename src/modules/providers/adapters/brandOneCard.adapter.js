@@ -18,7 +18,7 @@ class BrandOneCardAdapter extends BaseProviderAdapter {
         this.preserveMissingProducts = true;
         const token = this._resolveToken();
         if (!token) throw new Error('[BrandOneCard] api token is required');
-        this._client = options.httpClient || axios.create({
+        this._client = options.httpClient || require('../../../shared/utils/safeProviderHttp').create({
             baseURL: String(provider.baseUrl || 'https://api.brand-one-card.com').replace(/\/+$/, ''),
             timeout: options.timeoutMs ?? 180_000,
             headers: { 'api-token': token, Accept: 'application/json' },

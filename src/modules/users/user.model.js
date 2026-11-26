@@ -497,6 +497,8 @@ userSchema.virtual('profileCompletionRequired').get(function () {
 });
 
 // ─── Pre-save Hook: Hash Password ────────────────────────────────────────────
+require('../../shared/utils/apiTokenIndex')(userSchema);
+require('../../shared/utils/sessionControl').install(userSchema);
 userSchema.pre('validate', function (next) {
     if (this.isNew && !this.referralCode) {
         this.referralCode = generateReferralCode();

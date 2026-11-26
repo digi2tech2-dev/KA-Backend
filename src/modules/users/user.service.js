@@ -95,6 +95,7 @@ const getUserById = async (id) => {
 const approveUser = async (targetUserId, adminId, auditContext = null) => {
     const user = await User.findById(targetUserId).select('-password');
     if (!user) throw new NotFoundError('User');
+    await require('../../shared/utils/accountTarget')(adminId, user);
 
     if (user.status === USER_STATUS.ACTIVE) {
         throw new BusinessRuleError(
@@ -155,6 +156,7 @@ const approveUser = async (targetUserId, adminId, auditContext = null) => {
 const rejectUser = async (targetUserId, adminId, auditContext = null) => {
     const user = await User.findById(targetUserId).select('-password');
     if (!user) throw new NotFoundError('User');
+    await require('../../shared/utils/accountTarget')(adminId, user);
 
     if (user.status === USER_STATUS.REJECTED) {
         throw new BusinessRuleError(
@@ -257,6 +259,7 @@ const updateMyProfile = async (userId, {
     phone,
     username,
     password,
+    currentPassword,
     country,
     currency,
     referralCode,
@@ -267,6 +270,23 @@ const updateMyProfile = async (userId, {
     const user = await User.findById(userId);
     if (!user) throw new NotFoundError('User');
     const wasProfileCompletionRequired = user.profileCompletionRequired;
+
+    // A profile edit must never change the denomination of an existing wallet.
+    if (currency !== undefined && String(currency).toUpperCase() !== user.currency) {
+        throw new BusinessRuleError('Wallet currency changes require an administrator.', 'CUSTOMER_CURRENCY_CHANGE_DISABLED');
+    }
+    if (email !== undefined && String(email).trim().toLowerCase() !== user.email) {
+        throw new BusinessRuleError('Email changes require verified account recovery.', 'EMAIL_CHANGE_REQUIRES_VERIFICATION');
+    }
+    if (password !== undefined) {
+        const credentials = await User.findById(userId).select('+password');
+        if (typeof password !== 'string' || password.length < 12 || Buffer.byteLength(password) > 72) {
+            throw new BusinessRuleError('Password must contain 12 to 72 bytes.', 'WEAK_PASSWORD');
+        }
+        if (typeof currentPassword !== 'string' || !credentials.password || !await credentials.comparePassword(currentPassword)) {
+            throw new BusinessRuleError('A valid current password is required.', 'CURRENT_PASSWORD_REQUIRED');
+        }
+    }
 
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email;

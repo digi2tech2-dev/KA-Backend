@@ -102,29 +102,14 @@ const refresh = (_req, res) => {
  * req.user is set by the Passport strategy.
  */
 const googleCallback = catchAsync(async (req, res) => {
-    const result = await authService.loginWithGoogle(req.user);
-
     // Derive the FE base URL from the configured verify-redirect URL
     const frontendBase = config.frontend.verifyRedirectUrl
         .replace(/\/email-verified.*$/, '')   // strip path, keep origin
         .replace(/\/+$/, '');                  // strip trailing slashes
 
-    if (result.status === 'PROFILE_COMPLETION_REQUIRED') {
-        const params = new URLSearchParams({
-            status: 'PROFILE_COMPLETION_REQUIRED',
-            completionToken: result.completionToken,
-        });
-        return res.redirect(`${frontendBase}/auth?${params.toString()}`);
-    }
-
-    // If admin not yet approved — redirect frontend can show "pending" message
-    if (!result.token) {
-        return res.redirect(`${frontendBase}/auth?status=pending`);
-    }
-
-    // Redirect with JWT in query param so the SPA can capture it.
-    // FE loginWithGoogle() reads ?token= from window.location.search.
-    res.redirect(`${frontendBase}/auth?status=LOGIN_COMPLETE&token=${result.token}`);
+    const code = await require('../../shared/utils/oauthHandoff').store(req, req.user);
+    res.set('Referrer-Policy', 'no-referrer');
+    res.redirect(`${frontendBase}/auth?status=OAUTH_HANDOFF&code=${encodeURIComponent(code)}`);
 });
 
 const completeGoogleProfile = catchAsync(async (req, res) => {

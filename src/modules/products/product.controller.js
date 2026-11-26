@@ -11,6 +11,8 @@ const { NotFoundError } = require('../../shared/errors/AppError');
 // ─── Sensitive fields that must NEVER reach non-admin clients ─────────────────
 
 const SENSITIVE_FIELDS = [
+    'rawPayload',
+    'basePrice',
     'providerPrice',
     'markupType',
     'markupValue',
@@ -107,6 +109,12 @@ const getProduct = catchAsync(async (req, res) => {
         if (override?.isHidden) throw new NotFoundError('Product');
         if (override?.priceOverride != null) product.finalPrice = String(override.priceOverride);
     }
+    if (!isAdmin) {
+        const Group = require('../groups/group.model');
+        const group = req.user.groupId ? await Group.findById(req.user.groupId) : null;
+        const override = typeof getUserProductOverride === 'function' ? await getUserProductOverride(req.user._id, product._id) : null;
+        product.finalPrice = override?.priceOverride ?? require('../orders/pricing.service').calculateFinalPrice(product.basePrice, group?.isActive ? (group.percentage || 0) : 0);
+    }
     const responseProduct = isAdmin ? product : sanitizeProductForCustomer(product);
     sendSuccess(res, responseProduct);
 });
@@ -157,7 +165,7 @@ const verifyField = catchAsync(async (req, res) => {
     } catch (err) {
         return res.status(400).json({
             success: false,
-            message: err.message || 'Field verification failed.',
+            message: 'Field verification failed. Please check the supplied account details.',
         });
     }
 });

@@ -16,7 +16,7 @@ class MayaCardAdapter extends BaseProviderAdapter {
         const url = new URL(provider.baseUrl || 'https://maya-card.com');
         if (url.origin !== 'https://maya-card.com' || url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) throw new Error('[MayaCard] Invalid API base URL');
         this.preserveMissingProducts = true;
-        this._client = options.httpClient || axios.create({ baseURL: url.origin, timeout: options.timeoutMs ?? 30000, maxRedirects: 0,
+        this._client = options.httpClient || require('../../../shared/utils/safeProviderHttp').create({ baseURL: url.origin, timeout: options.timeoutMs ?? 30000, maxRedirects: 0,
             headers: { 'api-token': this._resolveToken(), Accept: 'application/json' } });
     }
     _safe(value) {

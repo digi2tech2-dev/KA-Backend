@@ -46,7 +46,7 @@ startDefaultSettingsSeed();
 
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', require('./shared/middlewares/proxyTrust')());
 
 // ── Security Middlewares ──────────────────────────────────────────────────────
 app.use(helmet({
@@ -90,12 +90,25 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 if (config.env !== 'test') {
-    app.use(morgan(config.env === 'production' ? 'combined' : 'dev'));
+    app.use(morgan(':method :status :response-time ms'));
 }
 
 // ── Static Files ──────────────────────────────────────────────────────────────
 // Serve uploaded files (deposit receipts, etc.) from /uploads
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// Sensitive financial uploads require session authentication and record ownership.
+for (const category of ['deposits', 'targets', 'order-fields', 'sub-agent-proofs', 'referral-payout-receipts']) {
+    app.use(`/uploads/${category}`, require('./shared/middlewares/authenticate'), require('./shared/middlewares/privateUploadAccess')(category));
+    app.use(`/api/uploads/${category}`, require('./shared/middlewares/authenticate'), require('./shared/middlewares/privateUploadAccess')(category));
+}
+// Separate public directories prevent traversal into financial evidence.
+for (const category of ['avatars', 'products', 'categories', 'payments', 'themes', 'target-apps']) {
+    app.use(`/uploads/${category}`, express.static(path.join(__dirname, '..', 'uploads', category), {
+        dotfiles: 'deny', setHeaders: res => {
+            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+        },
+    }));
+}
 
 // ── Passport (OAuth strategies) ───────────────────────────────────────────────
 // Only initialize when Google credentials are configured.

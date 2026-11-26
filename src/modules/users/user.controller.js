@@ -19,6 +19,7 @@ const updateMyProfile = catchAsync(async (req, res) => {
         phone,
         username,
         password,
+        currentPassword: req.body.currentPassword,
         country,
         currency,
         referralCode,

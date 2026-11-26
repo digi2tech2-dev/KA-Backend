@@ -16,6 +16,7 @@ if (config.google.clientId && config.google.clientSecret) {
             },
             async (req, accessToken, refreshToken, profile, done) => {
                 try {
+                    require('../shared/utils/verifiedGoogleProfile')(profile);
                     const { user } = await resolveGoogleUser(profile, req.oauthState || {});
                     return done(null, user);
                 } catch (err) {

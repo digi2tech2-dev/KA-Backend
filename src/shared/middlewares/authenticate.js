@@ -28,7 +28,7 @@ const authenticate = catchAsync(async (req, res, next) => {
     }
 
     // 2. Verify signature
-    const decoded = jwt.verify(token, config.jwt.secret);
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
 
     // 2b. Reject 2FA-pending tokens — these must be consumed via /verify-2fa only
     if (decoded.purpose === '2fa-pending') {
@@ -44,6 +44,7 @@ const authenticate = catchAsync(async (req, res, next) => {
     }
 
     // 4. Status gate — only ACTIVE users can use authenticated routes
+    require('../utils/sessionControl').validate(decoded, currentUser);
     if (currentUser.status !== USER_STATUS.ACTIVE) {
         // Use a generic message; do not expose the exact status to token holders
         throw new AuthenticationError(

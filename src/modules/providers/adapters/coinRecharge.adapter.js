@@ -52,7 +52,7 @@ class CoinRechargeAdapter extends BaseProviderAdapter {
         super(provider, options);
         this.isNonIdempotentSaleAdapter = true;
         this.supportsOrderStatusPolling = false;
-        this.http = options.http || axios.create({
+        this.http = options.http || require('../../../shared/utils/safeProviderHttp').create({
             baseURL: String(provider?.baseUrl || '').replace(/\/+$/, ''),
             timeout: Number(options.timeoutMs || process.env.COIN_RECHARGE_API_TIMEOUT_MS || 20000),
             // Explicitly do not install retry middleware for non-idempotent sales.

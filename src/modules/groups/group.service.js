@@ -10,7 +10,7 @@ const { ConflictError, NotFoundError, BusinessRuleError } = require('../../share
 
 /** Case-insensitive name collision check. */
 const _assertNameUnique = async (name, excludeId = null) => {
-    const query = { name: { $regex: new RegExp(`^${name.trim()}$`, 'i') } };
+    const query = { name: { $regex: new RegExp(`^${require('../../shared/utils/literalSearch')(name.trim())}$`, 'i') } };
     if (excludeId) query._id = { $ne: excludeId };
     const existing = await Group.findOne(query);
     if (existing) throw new ConflictError(`A group named '${name}' already exists.`);

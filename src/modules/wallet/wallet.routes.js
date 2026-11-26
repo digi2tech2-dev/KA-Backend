@@ -33,6 +33,7 @@ router.get(
     authenticate,
     requireActiveUser,
     authorize('ADMIN', 'SUPERVISOR'),
+    requirePermission('MANAGE_WALLET'),
     walletController.getUserTransactions
 );
 

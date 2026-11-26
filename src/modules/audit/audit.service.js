@@ -32,7 +32,7 @@ const sanitize = (value, seen = new Set()) => {
 
     const result = {};
     for (const [k, v] of Object.entries(value)) {
-        if (REDACTED_KEYS.has(k.toLowerCase())) {
+        if ((REDACTED_KEYS.has(k.toLowerCase()) || /password|token|secret|api.?key|authorization|cookie/i.test(k))) {
             result[k] = '[REDACTED]';
         } else {
             result[k] = sanitize(v, seen);

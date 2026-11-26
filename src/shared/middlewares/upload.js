@@ -30,7 +30,7 @@ const { BusinessRuleError } = require('../errors/AppError');
 const UPLOADS_ROOT = path.join(__dirname, '..', '..', '..', 'uploads');
 
 /** Max file size: 20 MB */
-const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 /**
  * Allowed MIME types for image uploads.
@@ -101,10 +101,12 @@ const createUpload = (category) => {
 
     // Ensure directory exists
     fs.mkdirSync(uploadDir, { recursive: true });
+    const quarantineDir = path.join(UPLOADS_ROOT, '.quarantine');
+    fs.mkdirSync(quarantineDir, { recursive: true });
 
     // Storage: disk with collision-proof filenames
     const storage = multer.diskStorage({
-        destination: (_req, _file, cb) => cb(null, uploadDir),
+        destination: (_req, _file, cb) => cb(null, quarantineDir),
         filename: (_req, file, cb) => {
             const timestamp = Date.now();
             const random = crypto.randomBytes(8).toString('hex');
@@ -112,6 +114,23 @@ const createUpload = (category) => {
             cb(null, `${timestamp}-${random}${ext}`);
         },
     });
+
+    // Validate before publishing a file, including every route using this factory.
+    const handleFile = storage._handleFile.bind(storage);
+    storage._handleFile = (req, file, callback) => {
+        handleFile(req, file, async (error, info) => {
+            if (error) return callback(error);
+            try {
+                await require('../utils/validateUploadContent')({ ...file, ...info });
+                const destination = path.join(uploadDir, info.filename);
+                await fsp.rename(info.path, destination);
+                callback(null, { ...info, destination: uploadDir, path: destination });
+            } catch (validationError) {
+                await fsp.unlink(info.path).catch(() => {});
+                callback(validationError);
+            }
+        });
+    };
 
     // File filter: deposits allow PDFs, everything else is images-only
     const isDeposit = category === 'deposits';

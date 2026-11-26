@@ -59,7 +59,7 @@ const DEFAULT_TIMEOUT_MS = 180_000;
  * @returns {import('axios').AxiosInstance}
  */
 const _buildAxiosClient = (baseURL, token, timeoutMs = DEFAULT_TIMEOUT_MS) => {
-    const client = axios.create({
+    const client = require('../../../shared/utils/safeProviderHttp').create({
         baseURL,
         timeout: timeoutMs,
         headers: {

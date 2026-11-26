@@ -72,22 +72,20 @@ const buildFrontendAuthRedirect = (params = {}) => {
     return `${frontendBase}/auth?${query.toString()}`;
 };
 
-const startGoogleOAuth = (req, res, next) => {
-    const state = createGoogleOAuthState({
-        referralCode: req.query.referralCode || req.query.ref || req.query.refCode || req.query.inviteCode,
-        intent: req.query.intent || req.query.mode,
-    });
-
+const startGoogleOAuth = async (req, res, next) => {
+    try {
+    const state = await require('../../shared/utils/oauthHandoff').begin(req);
     return passport.authenticate('google', {
         scope: ['profile', 'email'],
         session: false,
         state,
     })(req, res, next);
+    } catch (error) { next(error); }
 };
 
 const verifyGoogleOAuthState = async (req, res, next) => {
     try {
-        req.oauthState = await consumeGoogleOAuthState(req.query.state);
+        req.oauthState = await require('../../shared/utils/oauthHandoff').consumeState(req.query.state);
         return next();
     } catch (err) {
         return res.redirect(buildFrontendAuthRedirect({
@@ -240,4 +238,7 @@ router.post('/2fa/disable', authenticate, disable2FAValidation, validate, authCo
  */
 router.post('/verify-2fa', authLimiter, verify2FAValidation, validate, authController.verify2FA);
 
+router.post('/google/exchange', authLimiter, require('../../shared/utils/oauthHandoff').exchange);
+router.post('/2fa/disable-google/request', authLimiter, authenticate, require('../../shared/utils/googleMfaDisable').request);
+router.post('/2fa/disable-google/confirm', authLimiter, authenticate, require('../../shared/utils/googleMfaDisable').confirm);
 module.exports = router;

@@ -122,7 +122,7 @@ const createProduct = async ({
     markupType = MARKUP_TYPES.PERCENTAGE,
     markupValue = 0,
 }, adminUserId = null) => {
-    const existing = await Product.findOne({ name: new RegExp(`^${name}$`, 'i') });
+    const existing = await Product.findOne({ name: new RegExp(`^${require('../../shared/utils/literalSearch')(name)}$`, 'i') });
     if (existing) throw new ConflictError(`A product named '${name}' already exists.`);
 
     if (Number(maxQty) < Number(minQty)) {

@@ -80,6 +80,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
     await clearCollections();
+    await require('../modules/currency/currency.model').Currency.create({ code: 'EGP', name: 'Egyptian Pound', symbol: 'EGP', platformRate: 50, isActive: true });
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -406,14 +407,15 @@ describe('[3] approveDeposit', () => {
         expect(tx.balanceAfter).toBe(500);
     });
 
-    it('uses override amount instead of requestedAmount when provided', async () => {
-        await depositService.approveDeposit(deposit._id, admin._id, { amount: 300 });
+    it('rejects amount overrides without crediting the wallet', async () => {
+        await expect(depositService.approveDeposit(deposit._id, admin._id, { amount: 300 })).rejects.toMatchObject({ code: 'DEPOSIT_AMOUNT_IMMUTABLE' });
 
         const updated = await DepositRequest.findById(deposit._id);
-        expect(updated.requestedAmount).toBe(300);
+        expect(updated.requestedAmount).toBe(500);
+        expect(updated.status).toBe('PENDING');
 
         const after = await User.findById(customer._id);
-        expect(after.walletBalance).toBe(300);
+        expect(after.walletBalance).toBe(0);
     });
 
     it('creates DEPOSIT_APPROVED and WALLET_CREDIT audit logs', async () => {
@@ -743,11 +745,11 @@ describe('[8] Audit log correctness', () => {
 
     it('DEPOSIT_APPROVED log records finalAmount in metadata', async () => {
         const deposit = await depositService.createDepositRequest({ userId: customer._id, ...VALID_DEPOSIT });
-        await depositService.approveDeposit(deposit._id, admin._id, { amount: 450 });
+        await depositService.approveDeposit(deposit._id, admin._id);
         await flushAudit();
 
         const log = await AuditLog.findOne({ action: DEPOSIT_ACTIONS.APPROVED }).lean();
-        expect(log.metadata.finalAmount).toBe(450);
+        expect(log.metadata.finalAmount).toBe(500);
         expect(log.metadata.originalRequestedAmount).toBe(500);
     });
 

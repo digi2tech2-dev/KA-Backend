@@ -40,8 +40,8 @@ const createCategory = async (data, adminId) => {
     // Check for duplicate name
     const existing = await Category.findOne({
         $or: [
-            { name: { $regex: `^${data.name.trim()}$`, $options: 'i' } },
-            ...(data.nameAr ? [{ nameAr: { $regex: `^${data.nameAr.trim()}$`, $options: 'i' } }] : []),
+            { name: { $regex: `^${require('../../shared/utils/literalSearch')(data.name.trim())}$`, $options: 'i' } },
+            ...(data.nameAr ? [{ nameAr: { $regex: `^${require('../../shared/utils/literalSearch')(data.nameAr.trim())}$`, $options: 'i' } }] : []),
         ],
     });
     if (existing) {

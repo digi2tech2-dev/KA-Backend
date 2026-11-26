@@ -37,14 +37,14 @@ router.post(
  * @desc   List all groups (sorted by percentage desc)
  * @access Admin
  */
-router.get('/', groupController.listGroups);
+router.get('/', requirePermission('MANAGE_GROUPS'), groupController.listGroups);
 
 /**
  * @route  GET /api/groups/:id
  * @desc   Get a single group by ID
  * @access Admin
  */
-router.get('/:id', groupController.getGroup);
+router.get('/:id', requirePermission('MANAGE_GROUPS'), groupController.getGroup);
 
 /**
  * @route  PATCH /api/groups/:id

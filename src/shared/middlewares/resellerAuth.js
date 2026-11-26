@@ -70,17 +70,13 @@ const resellerAuth = async (req, res, next) => {
                 deletedAt: null,
             };
 
-        const candidates = await User.find(candidateFilter)
+        if (token.length > 512) return sendAuthError(req, res, 401, 'Invalid API token.', 'RESELLER_TOKEN_INVALID');
+        candidateFilter.apiTokenLookupHash = require('../utils/apiTokenIndex').digest(token);
+        const candidate = await User.findOne(candidateFilter)
             .select('+apiToken +apiSecret name email role status walletBalance creditLimit creditUsed currency groupId isApiEnabled whitelistIps webhookUrl')
             .populate('groupId', 'name percentage isActive billingMode');
 
-        let reseller = null;
-        for (const candidate of candidates) {
-            if (await candidate.compareApiToken(token)) {
-                reseller = candidate;
-                break;
-            }
-        }
+        const reseller = candidate && await candidate.compareApiToken(token) ? candidate : null;
 
         if (!reseller) {
             return sendAuthError(req, res, 401, 'Invalid API token.', 'RESELLER_TOKEN_INVALID');
@@ -93,7 +89,7 @@ const resellerAuth = async (req, res, next) => {
         const whitelist = (Array.isArray(reseller.whitelistIps) ? reseller.whitelistIps : [])
             .map(normalizeIp)
             .filter(Boolean);
-        const requestIp = normalizeIp(req.ip || req.socket?.remoteAddress || req.get('x-forwarded-for'));
+        const requestIp = normalizeIp(req.ip || req.socket?.remoteAddress);
 
         if (whitelist.length > 0 && !whitelist.includes(requestIp)) {
             return sendAuthError(req, res, 403, 'Request IP is not whitelisted.', 'RESELLER_IP_FORBIDDEN');
@@ -110,7 +106,7 @@ const resellerAuth = async (req, res, next) => {
 
         return next();
     } catch (err) {
-        return sendAuthError(req, res, 401, err.message || 'API authentication failed.', 'RESELLER_AUTH_FAILED');
+        return sendAuthError(req, res, 401, 'API authentication failed.', 'RESELLER_AUTH_FAILED');
     }
 };
 
