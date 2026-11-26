@@ -335,12 +335,12 @@ describe('Google OAuth referral preservation', () => {
         );
         expect(googleLogin.user.referredBy).toBeFalsy();
 
-        const linked = await resolveGoogleUser(
+        await expect(resolveGoogleUser(
             googleProfile({ id: 'new-google-link-id', email: existingEmail.email }),
             { intent: 'signup', referralCode: referrer.referralCode }
-        );
-        expect(linked.linkedExistingEmailUser).toBe(true);
-        expect(linked.user.referredBy).toBeFalsy();
+        )).rejects.toThrow(/already belongs to an account/i);
+        const unchanged = await User.findById(existingEmail._id);
+        expect(unchanged.googleId).toBeUndefined();
     });
 });
 

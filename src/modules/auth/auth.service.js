@@ -52,6 +52,7 @@ const {
 
 const TWO_FACTOR_OTP_EXPIRY_MS = 5 * 60 * 1000;
 const PROFILE_COMPLETION_EXPIRY_MS = 15 * 60 * 1000;
+const requiresMfa = (user) => [ROLES.ADMIN, ROLES.SUPERVISOR].includes(user?.role);
 
 /** Sign full-session JWT for a user. */
 const signToken = (userId, role, mfaVerified = false) => require('../../shared/utils/sessionControl').issue(userId, {}, mfaVerified);
@@ -267,6 +268,8 @@ const login = async ({ email, password }) => {
         throw new AuthenticationError('Invalid email or password.');
     }
 
+    if (user.deletedAt || user.blockedAt) throw new AuthenticationError('This account is unavailable.');
+
     // ── Gate 1: Email verification ────────────────────────────────────────────
     if (!user.verified) {
         throw new AuthenticationError(
@@ -305,6 +308,7 @@ const login = async ({ email, password }) => {
             'Your account was rejected by an administrator. Please contact support.'
         );
     }
+    if (user.status !== USER_STATUS.ACTIVE) throw new AuthenticationError('This account is unavailable.');
 
     // ── Gate 3: Password match ────────────────────────────────────────────────
     // Google OAuth users have no password — block password login for them
@@ -320,9 +324,14 @@ const login = async ({ email, password }) => {
     }
 
     // ── Gate 4: Two-Factor Authentication ─────────────────────────────────────
-    if (twoFactorPolicy.isRequiredFor(user)) {
+    if (twoFactorPolicy.isRequiredFor(user) || requiresMfa(user)) {
+        if (requiresMfa(user) && !user.isTwoFactorEnabled) {
+            user.isTwoFactorEnabled = true;
+            await user.save();
+        }
         return twoFactorPolicy.startLoginChallenge(user);
     }
+    if (user.isTwoFactorEnabled) return require('../../shared/utils/loginChallenge')(user);
 
     // ── 5. Issue full JWT ──────────────────────────────────────────────────────
     const token = await signToken(user._id, user.role);
@@ -436,6 +445,7 @@ const issueGoogleProfileCompletionToken = async (user) => {
 };
 
 const loginWithGoogle = async (user) => {
+    if (!user || user.deletedAt || user.blockedAt) throw new AuthenticationError('This account is unavailable.');
     if (user.status === USER_STATUS.PENDING) {
         // Return a token-less response so the frontend can show the approval message.
         // Some frontends prefer a token even for pending users; adjust as needed.
@@ -451,6 +461,7 @@ const loginWithGoogle = async (user) => {
             'Your account was rejected by an administrator. Please contact support.'
         );
     }
+    if (user.status !== USER_STATUS.ACTIVE) throw new AuthenticationError('This account is unavailable.');
 
     if (user.profileCompletionRequired) {
         const completionToken = await issueGoogleProfileCompletionToken(user);
@@ -462,7 +473,11 @@ const loginWithGoogle = async (user) => {
         };
     }
 
-    if (twoFactorPolicy.isRequiredFor(user)) {
+    if (twoFactorPolicy.isRequiredFor(user) || requiresMfa(user)) {
+        if (requiresMfa(user) && !user.isTwoFactorEnabled) {
+            user.isTwoFactorEnabled = true;
+            await user.save();
+        }
         return twoFactorPolicy.startLoginChallenge(user);
     }
     const token = await signToken(user._id, user.role);
@@ -506,7 +521,7 @@ const completeGoogleProfile = async ({ completionToken, country, currency }) => 
     if (user.status !== USER_STATUS.ACTIVE) {
         throw new AuthenticationError('Your account is not active. Contact an administrator.');
     }
-
+    if (user.deletedAt || user.blockedAt) throw new AuthenticationError('This account is unavailable.');
     await _assertActiveGroup(user.groupId);
 
     user.country = _normalizeCountry(country);
@@ -522,7 +537,11 @@ const completeGoogleProfile = async ({ completionToken, country, currency }) => 
     user.profileCompletionTokenExpires = null;
     await user.save();
 
-    if (twoFactorPolicy.isRequiredFor(user)) {
+    if (twoFactorPolicy.isRequiredFor(user) || requiresMfa(user)) {
+        if (requiresMfa(user) && !user.isTwoFactorEnabled) {
+            user.isTwoFactorEnabled = true;
+            await user.save();
+        }
         return twoFactorPolicy.startLoginChallenge(user);
     }
     const token = await signToken(user._id, user.role);

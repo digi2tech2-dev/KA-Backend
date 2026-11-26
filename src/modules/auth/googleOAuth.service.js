@@ -1,6 +1,7 @@
 'use strict';
 
 const { User, ROLES, USER_STATUS } = require('../users/user.model');
+const { ConflictError } = require('../../shared/errors/AppError');
 const { getHighestPercentageGroup } = require('../groups/group.service');
 const {
     resolveReferralOwnerForNewUser,
@@ -32,13 +33,13 @@ const resolveGoogleUser = async (profile, oauthState = {}) => {
         return { user, isNewUser: false, linkedExistingEmailUser: false };
     }
 
+    // A verified email alone is not proof that the existing local account is
+    // controlled by this Google subject. Linking must be an explicit,
+    // authenticated account-management operation.
     user = await User.findOne({ email });
-    if (user) {
-        user.googleId = googleId;
-        user.verified = true;
-        await user.save();
-        return { user, isNewUser: false, linkedExistingEmailUser: true };
-    }
+    if (user) throw new ConflictError(
+        'This email already belongs to an account. Sign in to that account and link Google from account settings.'
+    );
 
     const group = await getHighestPercentageGroup();
     const referralOwner = oauthState?.intent === 'signup' && oauthState?.referralCode
@@ -51,6 +52,9 @@ const resolveGoogleUser = async (profile, oauthState = {}) => {
         googleId,
         role: ROLES.CUSTOMER,
         groupId: group._id,
+        // Match password registration policy: newly registered customers are
+        // ACTIVE immediately, while access is still gated by Google verified
+        // email and the normal account status checks.
         status: USER_STATUS.ACTIVE,
         verified: true,
         ...buildReferralAssignment(referralOwner),

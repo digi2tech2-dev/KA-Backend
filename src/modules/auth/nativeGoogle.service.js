@@ -22,6 +22,15 @@ const verifyNativeGoogleIdToken = async (idToken, options = {}) => {
     }
 
     const payload = ticket?.getPayload?.() || null;
+    const audience = payload?.aud;
+    const issuer = payload?.iss;
+    const expiresAt = Number(payload?.exp);
+    const now = Math.floor(Date.now() / 1000);
+    if (!(audience === webClientId || (Array.isArray(audience) && audience.includes(webClientId)))
+        || !['accounts.google.com', 'https://accounts.google.com'].includes(issuer)
+        || !Number.isFinite(expiresAt) || expiresAt <= now) {
+        throw new AuthenticationError('Google ID token is invalid.');
+    }
     const sub = String(payload?.sub || '').trim();
     const email = String(payload?.email || '').trim().toLowerCase();
     if (!sub || !email || payload?.email_verified !== true) {
