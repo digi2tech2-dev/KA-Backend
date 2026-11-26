@@ -411,11 +411,21 @@ const updateUserCurrency = async (id, currency, adminId) => {
 
     // Atomic update — currency + balance together
     const previousCurrency = user.currency;
-    const updated = await User.findByIdAndUpdate(
-        id,
+    const expectedCurrency = user.currency && user.currency !== 'USD'
+        ? user.currency
+        : { $in: ['USD', null] };
+    const expectedBalance = Number(previousBalance || 0) === 0
+        ? { $in: [0, null] }
+        : previousBalance;
+    const updated = await User.findOneAndUpdate(
+        { _id: id, currency: expectedCurrency, walletBalance: expectedBalance },
         { $set: { currency: code, walletBalance: newBalance } },
         { new: true }
     ).populate('groupId', 'name percentage isActive');
+
+    if (!updated) {
+        throw new ConflictError('Wallet changed during currency conversion. Refresh the account and retry.');
+    }
 
     createAuditLog({
         actorId: adminId,

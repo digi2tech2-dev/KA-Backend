@@ -1,7 +1,9 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const crypto = require('node:crypto');
 const { DepositRequest, DEPOSIT_STATUS } = require('./deposit.model');
+const DepositTransactionClaim = require('./depositTransactionClaim.model');
 const { User } = require('../users/user.model');
 const { creditWalletDirect } = require('../wallet/wallet.service');
 const { processDepositReferralCommission } = require('../referrals/referralCommission.service');
@@ -133,22 +135,6 @@ const createDepositRequest = async ({
         );
     }
 
-    // A provider transaction reference represents one real payment and must
-    // never be reused for another deposit request.
-    if (isElectronicWallet && normalizedTransactionId) {
-        const existingTransaction = await DepositRequest.findOne({
-            paymentMethodId,
-            transactionId: normalizedTransactionId,
-        }).select('_id status');
-
-        if (existingTransaction) {
-            throw new BusinessRuleError(
-                'This transaction ID has already been used.',
-                'TRANSACTION_ID_ALREADY_USED'
-            );
-        }
-    }
-
     if (!isElectronicWallet && !receiptImage) {
         throw new BusinessRuleError(
             'Receipt image is required. Please upload a file.',
@@ -156,9 +142,9 @@ const createDepositRequest = async ({
         );
     }
 
-    const deposit = await DepositRequest.create({
+    const depositData = {
         userId,
-        paymentMethodId,
+        paymentMethodId: String(paymentMethodId).trim(),
         transactionId: normalizedTransactionId,
         requestedAmount: Number(parseFloat(requestedAmount).toFixed(2)),
         currency,
@@ -168,7 +154,64 @@ const createDepositRequest = async ({
         notes,
         senderDetails,
         status: DEPOSIT_STATUS.PENDING,
-    });
+    };
+
+    let deposit;
+    if (isElectronicWallet && normalizedTransactionId) {
+        // A read-then-create check alone races under concurrent requests.
+        // Claim the normalized provider transaction in the same transaction
+        // as the deposit so a real payment can fund at most one request.
+        const claimId = crypto.createHash('sha256')
+            .update(JSON.stringify([String(paymentMethodId).trim(), normalizedTransactionId]))
+            .digest('hex');
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                const existingTransaction = await DepositRequest.findOne({
+                    paymentMethodId: String(paymentMethodId).trim(),
+                    transactionId: normalizedTransactionId,
+                }).select('_id status').session(session);
+
+                if (existingTransaction) {
+                    throw new BusinessRuleError(
+                        'This transaction ID has already been used.',
+                        'TRANSACTION_ID_ALREADY_USED'
+                    );
+                }
+
+                try {
+                    await DepositTransactionClaim.create([{ _id: claimId }], { session });
+                } catch (error) {
+                    if (error.code === 11000) {
+                        throw new BusinessRuleError(
+                            'This transaction ID has already been used.',
+                            'TRANSACTION_ID_ALREADY_USED'
+                        );
+                    }
+                    throw error;
+                }
+
+                [deposit] = await DepositRequest.create([depositData], { session });
+                await DepositTransactionClaim.updateOne(
+                    { _id: claimId },
+                    { $set: { depositId: deposit._id } },
+                    { session }
+                );
+            });
+        } catch (error) {
+            if (error.code === 11000) {
+                throw new BusinessRuleError(
+                    'This transaction ID has already been used.',
+                    'TRANSACTION_ID_ALREADY_USED'
+                );
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
+    } else {
+        [deposit] = await DepositRequest.create([depositData]);
+    }
 
     // Audit: fire-and-forget
     createAuditLog({

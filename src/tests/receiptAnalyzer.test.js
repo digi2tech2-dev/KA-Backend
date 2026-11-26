@@ -37,7 +37,7 @@ const createSharpMock = ({ metadata, stats, throwOnCreate = false, throwOnStats 
     });
 };
 
-const loadAnalyzerService = ({ config = {}, sharpMock, sharpThrows = false } = {}) => {
+const loadAnalyzerService = ({ config = {}, sharpMock, sharpThrows = false, tesseractMock } = {}) => {
     jest.resetModules();
 
     jest.doMock('../config/config', () => ({
@@ -54,6 +54,8 @@ const loadAnalyzerService = ({ config = {}, sharpMock, sharpThrows = false } = {
     } else if (sharpMock) {
         jest.doMock('sharp', () => sharpMock);
     }
+
+    if (tesseractMock) jest.doMock('tesseract.js', () => tesseractMock);
 
     return require('../shared/services/receiptAnalyzer.service');
 };
@@ -135,5 +137,61 @@ describe('receiptAnalyzer.service', () => {
         const result = await service.analyzeReceiptBuffer(Buffer.from('image-bytes'));
         expect(result.isValid).toBe(false);
         expect(result.reason).toBe('SHARP_NOT_AVAILABLE');
+    });
+
+    it('terminates an OCR worker when its time limit expires and rejects the receipt', async () => {
+        const worker = { recognize: jest.fn(() => new Promise(() => {})), terminate: jest.fn(async () => {}) };
+        const service = loadAnalyzerService({
+            config: { enableOcr: true, ocrTimeoutMs: 5, ocrMaxConcurrent: 1 },
+            sharpMock: createSharpMock({
+                metadata: { format: 'png', width: 100, height: 100 },
+                stats: { entropy: 5, channels: [{ mean: 120, stdev: 10 }, { mean: 125, stdev: 10 }, { mean: 130, stdev: 10 }] },
+            }),
+            tesseractMock: { createWorker: jest.fn(async () => worker) },
+        });
+
+        const result = await service.analyzeReceiptBuffer(Buffer.from('image-bytes'));
+        expect(result).toMatchObject({ isValid: false, reason: 'OCR_TIMEOUT' });
+        expect(worker.terminate).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails closed when OCR is enabled but worker initialization fails', async () => {
+        const service = loadAnalyzerService({
+            config: { enableOcr: true },
+            sharpMock: createSharpMock({
+                metadata: { format: 'png', width: 100, height: 100 },
+                stats: { entropy: 5, channels: [{ mean: 120, stdev: 10 }, { mean: 125, stdev: 10 }, { mean: 130, stdev: 10 }] },
+            }),
+            tesseractMock: { createWorker: jest.fn(async () => { throw new Error('worker failed'); }) },
+        });
+
+        const result = await service.analyzeReceiptBuffer(Buffer.from('image-bytes'));
+        expect(result).toMatchObject({ isValid: false, reason: 'OCR_RUNTIME_FAILED' });
+    });
+
+    it('caps concurrent OCR workers per process', async () => {
+        let resolveWorkerCreated;
+        const workerCreated = new Promise((resolve) => { resolveWorkerCreated = resolve; });
+        let resolveRecognition;
+        const worker = {
+            recognize: jest.fn(() => new Promise((resolve) => { resolveRecognition = resolve; })),
+            terminate: jest.fn(async () => {}),
+        };
+        const service = loadAnalyzerService({
+            config: { enableOcr: true, ocrMaxConcurrent: 1 },
+            sharpMock: createSharpMock({
+                metadata: { format: 'png', width: 100, height: 100 },
+                stats: { entropy: 5, channels: [{ mean: 120, stdev: 10 }, { mean: 125, stdev: 10 }, { mean: 130, stdev: 10 }] },
+            }),
+            tesseractMock: { createWorker: jest.fn(async () => { resolveWorkerCreated(); return worker; }) },
+        });
+
+        const first = service.analyzeReceiptBuffer(Buffer.from('first-image'));
+        await workerCreated;
+        const second = await service.analyzeReceiptBuffer(Buffer.from('second-image'));
+        expect(second).toMatchObject({ isValid: false, reason: 'OCR_CAPACITY_EXCEEDED' });
+
+        resolveRecognition({ data: { text: 'vodafone cash receipt' } });
+        expect((await first).isValid).toBe(true);
     });
 });

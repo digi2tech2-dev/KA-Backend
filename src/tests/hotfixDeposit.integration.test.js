@@ -3,6 +3,8 @@ const mongoose=require('mongoose');
 const {User}=require('../modules/users/user.model');
 const Group=require('../modules/groups/group.model');
 const {DepositRequest}=require('../modules/deposits/deposit.model');
+const DepositTransactionClaim=require('../modules/deposits/depositTransactionClaim.model');
+const currencyConverter=require('../services/currencyConverter.service');
 const {WalletTransaction}=require('../modules/wallet/walletTransaction.model');
 const service=require('../modules/deposits/deposit.service');
 let user,admin,staff,deposit;
@@ -14,12 +16,25 @@ beforeAll(async()=>{
     deposit=await DepositRequest.create({userId:user._id,paymentMethodId:'manual-test',requestedAmount:100,currency:'USD',exchangeRate:1,amountUsd:100,receiptImage:'uploads/deposits/test.png'});
 });
 afterAll(async()=>mongoose.disconnect());
+afterEach(()=>jest.restoreAllMocks());
 test('neither reviewer can inflate an existing pending deposit',async()=>{
     await expect(service.approveDeposit(deposit._id,admin._id,{amount:5000})).rejects.toMatchObject({code:'DEPOSIT_AMOUNT_IMMUTABLE'});
     await expect(service.updatePendingDeposit(deposit._id,{requestedAmount:5000},admin._id)).rejects.toMatchObject({code:'DEPOSIT_AMOUNT_IMMUTABLE'});
     expect((await User.findById(user._id)).walletBalance).toBe(100);
     expect((await DepositRequest.findById(deposit._id)).status).toBe('PENDING');
     expect(await WalletTransaction.countDocuments({userId:user._id})).toBe(0);
+});
+test('concurrent requests cannot claim the same provider transaction twice',async()=>{
+    jest.spyOn(currencyConverter,'getConversionRate').mockResolvedValue(1);
+    const request={userId:user._id,paymentMethodId:'wallet-provider',transactionId:'TXN-ONCE-0001',
+        isElectronicWallet:true,requestedAmount:20,currency:'USD',exchangeRate:1,amountUsd:20};
+    const results=await Promise.allSettled([
+        service.createDepositRequest(request),
+        service.createDepositRequest(request),
+    ]);
+    expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+    expect(results.filter(result=>result.status==='rejected'&&result.reason.code==='TRANSACTION_ID_ALREADY_USED')).toHaveLength(1);
+    expect(await DepositTransactionClaim.countDocuments()).toBe(1);
 });
 test('a supervisor with a stolen session cannot approve and mint funds',async()=>{
     await expect(service.approveDeposit(deposit._id,staff._id)).rejects.toMatchObject({statusCode:403});

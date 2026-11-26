@@ -11,6 +11,7 @@ try {
 }
 
 const DEFAULT_OCR_LANGUAGE = 'eng+ara';
+let activeOcrWorkers = 0;
 
 const ensureBuffer = (value) => Buffer.isBuffer(value) && value.length > 0;
 
@@ -164,10 +165,17 @@ const runOptionalOcrValidation = async (imageBuffer, settings) => {
         return {
             skipped: true,
             reason: 'OCR_LIBRARY_NOT_INSTALLED',
-            isValid: true,
+            isValid: false,
         };
     }
 
+    const maxConcurrent = Math.max(1, Math.floor(Number(settings.ocrMaxConcurrent) || 2));
+    if (activeOcrWorkers >= maxConcurrent) {
+        return { skipped: false, isValid: false, reason: 'OCR_CAPACITY_EXCEEDED' };
+    }
+
+    activeOcrWorkers += 1;
+    let worker;
     try {
         const preparedBuffer = await sharp(imageBuffer)
             .resize({ width: settings.ocrResizeWidth, withoutEnlargement: true })
@@ -176,19 +184,16 @@ const runOptionalOcrValidation = async (imageBuffer, settings) => {
             .png()
             .toBuffer();
 
-        const recognize = tesseract.recognize;
-        if (typeof recognize !== 'function') {
+        if (typeof tesseract.createWorker !== 'function') {
             return {
-                skipped: true,
+                skipped: false,
                 reason: 'OCR_RECOGNIZER_NOT_AVAILABLE',
-                isValid: true,
+                isValid: false,
             };
         }
 
-        const ocrResult = await withTimeout(
-            recognize(preparedBuffer, DEFAULT_OCR_LANGUAGE, { logger: () => {} }),
-            settings.ocrTimeoutMs
-        );
+        worker = await tesseract.createWorker(DEFAULT_OCR_LANGUAGE, 1, { logger: () => {} });
+        const ocrResult = await withTimeout(worker.recognize(preparedBuffer), settings.ocrTimeoutMs);
 
         const extractedText = String(ocrResult?.data?.text || '').trim();
         const normalizedText = extractedText.toLowerCase();
@@ -211,12 +216,13 @@ const runOptionalOcrValidation = async (imageBuffer, settings) => {
         };
     } catch (error) {
         return {
-            // OCR is best-effort and should never crash deposit flow.
-            skipped: true,
-            reason: 'OCR_RUNTIME_FAILED',
-            details: error.message,
-            isValid: true,
+            skipped: false,
+            reason: String(error?.message || '').startsWith('OCR_TIMEOUT_') ? 'OCR_TIMEOUT' : 'OCR_RUNTIME_FAILED',
+            isValid: false,
         };
+    } finally {
+        if (worker) await worker.terminate().catch(() => {});
+        activeOcrWorkers -= 1;
     }
 };
 

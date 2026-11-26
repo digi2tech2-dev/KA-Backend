@@ -94,6 +94,7 @@ const config = {
         maxInputPixels: parseNumber(process.env.RECEIPT_ANALYZER_MAX_INPUT_PIXELS, 40_000_000),
         ocrTimeoutMs: parseNumber(process.env.RECEIPT_ANALYZER_OCR_TIMEOUT_MS, 3500),
         ocrResizeWidth: parseNumber(process.env.RECEIPT_ANALYZER_OCR_RESIZE_WIDTH, 1200),
+        ocrMaxConcurrent: parseNumber(process.env.RECEIPT_ANALYZER_OCR_MAX_CONCURRENT, 2),
         ocrMinKeywordMatches: parseNumber(process.env.RECEIPT_ANALYZER_OCR_MIN_KEYWORD_MATCHES, 1),
         ocrKeywords: String(process.env.RECEIPT_ANALYZER_OCR_KEYWORDS || '')
             .split(',')
