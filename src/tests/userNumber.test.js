@@ -199,14 +199,16 @@ test('user routes accept numeric IDs and retain authentication and permission ch
     try {
         expect((await get()).status).toBe(401);
         expect(find).not.toHaveBeenCalled();
-        const token = jwt.sign({ id: admin._id.toString(), role: 'ADMIN' }, config.jwt.secret);
+        const token = jwt.sign({ id: admin._id.toString(), role: 'ADMIN', purpose: 'access',
+            sv: String(admin.sessionVersion || '0'), mfa: false }, config.jwt.secret);
         const result = await get(token);
         expect(result.status).toBe(200);
         expect(result.body.data.id).toBe(100);
         expect(result.body.data._id).toBe(target._id.toString());
         expect(find).toHaveBeenCalledWith({ userNumber: 100 });
         find.mockClear();
-        const customerToken = jwt.sign({ id: target._id.toString(), role: 'CUSTOMER' }, config.jwt.secret);
+        const customerToken = jwt.sign({ id: target._id.toString(), role: 'CUSTOMER', purpose: 'access',
+            sv: String(target.sessionVersion || '0'), mfa: false }, config.jwt.secret);
         User.findById.mockResolvedValueOnce(target);
         expect((await get(customerToken)).status).toBe(403);
         expect(find).not.toHaveBeenCalled();

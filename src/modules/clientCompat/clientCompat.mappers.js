@@ -1,7 +1,7 @@
 'use strict';
 
 const { ORDER_STATUS } = require('../orders/order.model');
-const { normalizeProviderDecimalPrice } = require('../../shared/utils/decimalPrecision');
+const { Decimal, normalizeProviderDecimalPrice } = require('../../shared/utils/decimalPrecision');
 
 const toNumber = (value, fallback = 0) => {
     const numeric = Number(value);
@@ -14,13 +14,15 @@ const toFixedCompatNumber = (value) => {
     return Number(numeric.toFixed(6));
 };
 
-// JSON numbers cannot represent arbitrary-precision decimal prices safely.
-// Keep the legacy number shape when it is lossless, otherwise return the full
-// canonical decimal string so clients receive every digit.
+// Keep the legacy number shape when it round-trips without losing decimal digits.
+// Otherwise return the full canonical decimal string.
 const toCompatPrice = (value) => {
     const normalized = normalizeProviderDecimalPrice(value);
-    const decimalPlaces = normalized.includes('.') ? normalized.split('.')[1].length : 0;
-    return decimalPlaces > 6 ? normalized : Number(normalized);
+    const decimal = new Decimal(normalized);
+    const numeric = Number(normalized);
+    return Number.isFinite(numeric) && new Decimal(String(numeric)).eq(decimal)
+        ? numeric
+        : normalized;
 };
 
 const toSafeNumber = (value, fallback = 0) => {

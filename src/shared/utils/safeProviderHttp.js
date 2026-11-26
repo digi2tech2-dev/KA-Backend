@@ -38,9 +38,13 @@ const create = defaults => {
         const target = parseDestination(client.getUri(request));
         const allowed = String(process.env.SUPPLIER_TRUSTED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean).map(value => parseDestination(value).origin);
         if (target.origin !== base.origin || (process.env.NODE_ENV === 'production' && !allowed.includes(target.origin))) throw denied();
-        Object.assign(request, { proxy:false, maxRedirects:0, timeout:Math.min(Number(request.timeout)||20000,180000),
+        const safeguards = { proxy:false, maxRedirects:0, timeout:Math.min(Number(request.timeout)||20000,180000),
             httpsAgent:new https.Agent({ keepAlive:false, rejectUnauthorized:true, lookup:safeLookup }), lookup:safeLookup,
-            maxContentLength:8*1024*1024, maxBodyLength:1024*1024, socketPath:undefined, transport:undefined, adapter:'http' });
+            maxContentLength:8*1024*1024, maxBodyLength:1024*1024, socketPath:undefined, transport:undefined };
+        // Keep production pinned to Node's hardened HTTP transport; in tests,
+        // allow injected Axios adapters so provider traffic stays fully mocked.
+        if (process.env.NODE_ENV !== 'test') safeguards.adapter = 'http';
+        Object.assign(request, safeguards);
         return request;
     });
     return client;
